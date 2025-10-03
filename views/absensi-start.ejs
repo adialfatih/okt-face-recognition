@@ -1,0 +1,13 @@
+<% layout('layout') -%>
+    <div class="space-y-3">
+        <h1 class="text-xl font-bold">Absensi</h1>
+        <div class="grid grid-cols-2 gap-2">
+            <% [ 'Masuk Shift Pagi' ,'Keluar Shift Pagi', 'Masuk Shift Siang' ,'Keluar Shift Siang', 'Masuk Shift Malam'
+                ,'Keluar Shift Malam', 'Masuk DS' ,'Keluar DS', 'Masuk Driver' ,'Keluar Driver', 'Masuk Security'
+                ,'Keluar Security', 'Masuk Terlambat' ,'Ijin Keluar' ].forEach(k=>{ %>
+                <a href="/absensi/capture?k=<%= encodeURIComponent(k) %>" class="btn btn-primary">
+                    <%= k %>
+                </a>
+                <% }) %>
+        </div>
+    </div>

@@ -1,0 +1,19 @@
+<% layout('layout') -%>
+    <div class="space-y-3">
+        <div class="relative">
+            <video id="video" autoplay playsinline class="w-full rounded-box"></video>
+            <canvas id="overlay" class="absolute inset-0"></canvas>
+            <div id="infoCard" class="absolute left-2 bottom-2 z-50 max-w-[92%] sm:max-w-[60%] pointer-events-none">
+            </div>
+            <div class="absolute right-2 top-2 z-50">
+                <button id="btnSwitchCam" class="btn btn-xs md:btn-sm">Ganti Kamera</button>
+            </div>
+        </div>
+        <!-- <div id="toastArea" class="fixed inset-x-0 top-4 flex justify-center z-50"></div>
+        <div class="text-center">
+            <div id="info" class="mt-2"></div>
+        </div> -->
+        <div id="toastArea" class="fixed inset-x-0 top-4 flex justify-center z-50"></div>
+    </div>
+    <script defer src="/public/js/face-common.js"></script>
+    <script defer src="/public/js/test.js"></script>

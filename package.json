@@ -1,0 +1,22 @@
+{
+    "name": "absensi-face-node",
+    "version": "1.0.0",
+    "private": true,
+    "type": "commonjs",
+    "scripts": {
+        "start": "node app.js",
+        "dev": "NODE_ENV=development nodemon app.js"
+    },
+    "dependencies": {
+        "dayjs": "^1.11.13",
+        "dotenv": "^16.4.5",
+        "ejs": "^3.1.10",
+        "ejs-mate": "^4.0.0",
+        "express": "^4.19.2",
+        "mysql2": "^3.11.3",
+        "socket.io": "^4.7.5"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.7"
+    }
+}

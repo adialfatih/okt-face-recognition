@@ -1,0 +1,22 @@
+/* Mobile-first tweaks */
+video {
+    max-height: 70vh;
+    object-fit: contain;
+    background: #000;
+}
+
+canvas {
+    pointer-events: none;
+}
+
+.autoComplete_wrapper>input {
+    @apply input input-bordered w-full;
+}
+
+.autoComplete_wrapper>ul {
+    @apply menu bg-base-100 mt-2 rounded-box shadow max-h-60 overflow-auto;
+}
+
+.autoComplete_result {
+    @apply p-2 hover:bg-base-200 cursor-pointer;
+}

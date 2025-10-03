@@ -1,0 +1,26 @@
+<% layout('layout') -%>
+    <div class="space-y-4">
+        <h1 class="text-xl font-bold">Rekam Wajah</h1>
+        <!-- <label class="form-control w-full">
+            <div class="label"><span class="label-text">NRP / Nama</span></div>
+            <input id="search" type="text" placeholder="Ketik NRP/Nama minimal 2 huruf, lalu pilih dari daftar"
+                class="input input-bordered w-full" />
+            <ul id="suggest" class="menu bg-base-100 mt-2 rounded-box shadow max-h-60 overflow-auto hidden"></ul>
+        </label> -->
+        <label class="form-control w-full">
+            <div class="label"><span class="label-text">NRP / Nama</span></div>
+            <input id="search" type="text" placeholder="Ketik NRP/Nama..." class="input input-bordered w-full" />
+        </label>
+
+        <div id="selectedInfo" class="text-sm text-base-content/70 hidden">
+            Dipilih: <span id="selectedText" class="font-semibold"></span>
+        </div>
+
+        <div class="mt-2">
+            <a id="btnStart" href="#" class="btn btn-primary btn-block disabled" aria-disabled="true">Mulai Rekam</a>
+        </div>
+    </div>
+    <!-- autoComplete.js (CSS & JS) -->
+
+    <script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js@10.2.7/dist/autoComplete.min.js"></script>
+    <script defer src="/public/js/rekam.js"></script>

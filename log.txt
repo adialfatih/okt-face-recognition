@@ -1,0 +1,34 @@
+absensi-face-node/
+├─ .env.example
+├─ package.json
+├─ app.js
+├─ db.js
+├─ routes/
+│ ├─ pages.js
+│ └─ api.js
+├─ public/
+│ ├─ css/
+│ │ └─ styles.css
+│ ├─ js/
+│ │ ├─ face-common.js
+│ │ ├─ absensi.js
+│ │ ├─ rekam.js
+│ │ ├─ test.js
+│ │ └─ ui.js
+│ └─ models/ ← (download face-api.js models here)
+├─ views/
+│ ├─ partials/
+│ │ ├─ head.ejs
+│ │ └─ nav.ejs
+│ ├─ layout.ejs
+│ ├─ dashboard.ejs
+│ ├─ absensi-start.ejs
+│ ├─ absensi-capture.ejs
+│ ├─ rekam-start.ejs
+│ ├─ rekam-capture.ejs
+│ ├─ test-start.ejs
+│ ├─ test-capture.ejs
+│ ├─ placeholder.ejs
+│ └─ about.ejs
+└─ sql/
+└─ schema.sql
