@@ -5,11 +5,22 @@ const path = require('path');
 const dayjs = require('dayjs');
 const { Server } = require('socket.io');
 const ejsMate = require('ejs-mate');
-
+const cron = require('node-cron');
+const { fullSyncFromHR } = require('./services/karyawanCache');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+// CRON: full sync setiap 02:30 WIB
+cron.schedule('30 2 * * *', async () => {
+    try {
+        const r = await fullSyncFromHR();
+        console.log('[cron] karyawan full sync OK:', r);
+    } catch (e) {
+        console.error('[cron] karyawan full sync FAIL:', e.message);
+    }
+}, { timezone: 'Asia/Jakarta' });
 
 app.engine('ejs', ejsMate);
 app.set('view engine', 'ejs');

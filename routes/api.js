@@ -18,9 +18,9 @@ const SHIFT_RULES = {
 
 const express = require('express');
 const dayjs = require('dayjs');
-const { q, pool } = require('../db');
+const { q, pool, hrq } = require('../db');
 const router = express.Router();
-
+const { mapCacheToUI, ensureInCache, fullSyncFromHR, invalidateNRP, ACTIVE_STATUSES } = require('../services/karyawanCache');
 
 const FACE_THRESHOLD = Number(process.env.FACE_DISTANCE_THRESHOLD || 0.5);
 // ==== Embedding Cache (supaya match cepat untuk 1000+ karyawan) ====
@@ -58,7 +58,11 @@ function getNow() {
     const now = dayjs();
     return { tanggal: now.format('YYYY-MM-DD'), jam: now.format('HH:mm:ss'), now };
 }
-
+async function getProfilUI(nrp) {
+    const c = await ensureInCache(nrp);
+    if (!c) return null;
+    return mapCacheToUI(c); // {nrp,nama,dep,divisi,jabatan,status}
+}
 
 function computeLateFlag(kategori, now) {
     // Telat hanya untuk Masuk Shift Pagi/Siang/Malam, grace 5 menit
@@ -80,7 +84,6 @@ function computeLateMinutes(kategori, now) {
     };
     const startStr = startMap[kategori];
     if (!startStr) return 0;
-
     // Anchor start time ke tanggal yang tepat
     // Khusus "Masuk Shift Malam": jika sekarang dini hari (00:00–05:59), anggap start-nya malam sebelumnya 22:00
     let start = dayjs(`${now.format('YYYY-MM-DD')} ${startStr}`);
@@ -100,9 +103,39 @@ function computeLateMinutes(kategori, now) {
 router.get('/karyawan/search', async (req, res) => {
     const qstr = (req.query.q || '').trim();
     if (!qstr || qstr.length < 1) return res.json([]);
-    //const rows = await q(`SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp LIKE ? OR nama LIKE ? LIMIT 20`, [`%${qstr}%`, `%${qstr}%`]);
-    const rows = await q(`SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp LIKE ? OR nama LIKE ? LIMIT 20`, [`%${qstr}%`, `%${qstr}%`]);
-    res.json(rows);
+    // Cari di cache dulu
+    try {
+        // 1) Cek cache
+        let rows = await q(`
+     SELECT nrp, nama, departement AS dep, divisi, jabatan
+     FROM table_karyawan_cache
+     WHERE nrp LIKE ? OR nama LIKE ?
+     LIMIT 20
+   `, [`%${qstr}%`, `%${qstr}%`]);
+        if (rows.length) return res.json(rows);
+
+        // 2) Fallback HR + upsert ke cache
+        const hrRows = await hrq(`
+     SELECT nrp, nama, departement, divisi, jabatan, status
+     FROM data_karyawan
+     WHERE nrp LIKE ? OR nama LIKE ?
+     LIMIT 20
+   `, [`%${qstr}%`, `%${qstr}%`]);
+        for (const r of hrRows) {
+            await q(`
+       INSERT INTO table_karyawan_cache (nrp, nama, departement, divisi, jabatan, status, updated_at)
+       VALUES (?,?,?,?,?, COALESCE(?, 'KONTRAK'), NOW())
+       ON DUPLICATE KEY UPDATE
+         nama=VALUES(nama), departement=VALUES(departement), divisi=VALUES(divisi), jabatan=VALUES(jabatan), status=VALUES(status), updated_at=NOW()
+     `, [r.nrp, r.nama, r.departement, r.divisi, r.jabatan, r.status]);
+        }
+        return res.json(hrRows.map(r => ({
+            nrp: r.nrp, nama: r.nama, dep: r.departement, divisi: r.divisi, jabatan: r.jabatan
+        })));
+    } catch (e) {
+        console.error('[search] fail:', e.message);
+        return res.json([]); // jangan pecahkan client; kirim array kosong
+    }
 });
 
 
@@ -112,17 +145,6 @@ router.post('/match', async (req, res) => {
         const { descriptors } = req.body; // [[128 floats], ...]
         if (!Array.isArray(descriptors) || descriptors.length === 0) return res.status(400).json({ error: 'No descriptors' });
 
-
-        // Fetch candidate embeddings (optimize later by caching)
-        // const rows = await q('SELECT id, nrp, embedding FROM table_face_embeddings');
-        // let best = { nrp: null, dist: 9e9 };
-        // for (const r of rows) {
-        //     const emb = Array.isArray(r.embedding) ? r.embedding : JSON.parse(r.embedding);
-        //     for (const d of descriptors) {
-        //         const dist = euclideanDistance(emb, d);
-        //         if (dist < best.dist) best = { nrp: r.nrp, dist };
-        //     }
-        // }
         await ensureEmbeddings();
         let best = { nrp: null, dist: 9e9 };
         for (const e of EMB_CACHE) {
@@ -133,7 +155,9 @@ router.post('/match', async (req, res) => {
         }
         if (best.dist <= FACE_THRESHOLD) {
             //const [info] = await q('SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
-            const [info] = await q('SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
+            // const [info] = await hrQ('SELECT nrp, nama, departement AS dep, divisi, jabatan FROM data_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
+            // return res.json({ match: { ...best, ...info } });
+            const info = await getProfilUI(best.nrp);
             return res.json({ match: { ...best, ...info } });
         }
         res.json({ match: null, bestDist: best.dist });
@@ -154,31 +178,19 @@ router.post('/faces', async (req, res) => {
         const { nrp, samples, forceReplace } = req.body; // samples: [{embedding:[...128], snapshotBase64, mime}]
         if (!nrp || !Array.isArray(samples) || samples.length === 0) return res.status(400).json({ error: 'Invalid payload' });
         // Validate karyawan
-        const cek = await q('SELECT nrp FROM table_karyawan WHERE nrp=? LIMIT 1', [nrp]);
-        if (!cek.length) return res.status(404).json({ error: 'NRP tidak ditemukan' });
+        //const cek = await q('SELECT nrp FROM table_karyawan WHERE nrp=? LIMIT 1', [nrp]);
+        //if (!cek.length) return res.status(404).json({ error: 'NRP tidak ditemukan' });
         // sebelum insert rows:
+        const prof = await ensureInCache(nrp);
+        if (!prof) return res.status(404).json({ error: 'NRP tidak ditemukan di HR' });
+        if (!ACTIVE_STATUSES.has((prof.status || '').toUpperCase())) {
+            return res.status(400).json({ error: 'NRP tidak aktif (RESIGN)' });
+        }
         const [{ c: existing = 0 }] = await q('SELECT COUNT(*) AS c FROM table_face_embeddings WHERE nrp=?', [nrp]);
         if (existing > 0 && !req.body?.forceReplace) {
             return res.json({ ok: false, reason: 'exists', count: Number(existing) });
         }
 
-        // Insert rows
-        // for (const s of samples) {
-        //     const embJSON = JSON.stringify(s.embedding);
-        //     const buf = s.snapshotBase64 ? Buffer.from(s.snapshotBase64.split(',')[1] || '', 'base64') : null;
-        //     await q('INSERT INTO table_face_embeddings (nrp, embedding, snapshot, snapshot_mime) VALUES (?,?,?,?)', [nrp, embJSON, buf, s.mime || 'image/jpeg']);
-        // }
-        // res.json({ ok: true, saved: samples.length });
-        //onst list = Array.isArray(samples) ? samples.slice(0, 15) : [];
-        // for (const s of list) {
-        //     const embJSON = JSON.stringify(s.embedding);
-        //     const buf = s.snapshotBase64 ? Buffer.from(s.snapshotBase64.split(',')[1] || '', 'base64') : null;
-        //     await q(
-        //         'INSERT INTO table_face_embeddings (nrp, embedding, snapshot, snapshot_mime) VALUES (?,?,?,?)',
-        //         [nrp, embJSON, buf, s.mime || 'image/jpeg']
-        //     );
-        // }
-        // res.json({ ok: true, saved: list.length });
         const list = samples.slice(0, 15); // enforce 15 maksimal
 
         const conn = await pool.getConnection();
@@ -263,25 +275,36 @@ router.post('/absen', async (req, res) => {
 
         // Anti-dobel (nrp, tanggal, kategori)
         try {
-            // await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late) VALUES (?,?,?,?,?)', [
-            //     best.nrp, nowObj.tanggal, nowObj.jam, kategori, late
+            // await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late, menit_terlambat) VALUES (?,?,?,?,?,?)', [
+            //     best.nrp, nowObj.tanggal, nowObj.jam, kategori, late, lateMin
             // ]);
-            await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late, menit_terlambat) VALUES (?,?,?,?,?,?)', [
-                best.nrp, nowObj.tanggal, nowObj.jam, kategori, late, lateMin
+            await q(`
+     INSERT INTO table_absensi
+       (nrp, tanggal, jam, kategori, nama_snapshot, dep_snapshot, divisi_snapshot, jabatan_snapshot, is_late, menit_terlambat)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
+   `, [
+                best.nrp, nowObj.tanggal, nowObj.jam, kategori,
+                info.nama, info.dep, info.divisi, info.jabatan,
+                late, lateMin
             ]);
         } catch (e) {
             // Duplicate entry
-            //return res.json({ ok: false, reason: 'duplicate' });
             // Duplicate entry: kirimkan info karyawan + kategori agar UI bisa menulis nama/shift
-            const [infoDup] = await q(
-                'SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1',
-                [best.nrp]
-            );
+            // const [infoDup] = await q(
+            //     'SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1',
+            //     [best.nrp]
+            // );
+            // return res.json({
+            //     ok: false,
+            //     reason: 'duplicate',
+            //     kategori,
+            //     match: { ...best, ...infoDup }  // {nrp, nama, dep, divisi, jabatan, dist}
+            // });
             return res.json({
                 ok: false,
                 reason: 'duplicate',
                 kategori,
-                match: { ...best, ...infoDup }  // {nrp, nama, dep, divisi, jabatan, dist}
+                match: { ...best, ...info }   // pakai info dari cache
             });
         }
 
@@ -290,9 +313,12 @@ router.post('/absen', async (req, res) => {
             'absensi', kategori, best.nrp, best.dist, 'recognized', frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
         ]);
         // Return profile
-        //const [info] = await q('SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
-        const [info] = await q('SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
-        res.json({ ok: true, match: { ...best, ...info }, is_late: late });
+        const info = await getProfilUI(best.nrp);
+        if (!info) return res.json({ ok: false, reason: 'no-profile' });
+        if (!ACTIVE_STATUSES.has((info.status || '').toUpperCase())) {
+            return res.json({ ok: false, reason: 'inactive', match: info });
+        }
+        //res.json({ ok: true, match: { ...best, ...info }, is_late: late });
     } catch (e) {
         console.error(e); res.status(500).json({ error: 'absen failed' });
     }
@@ -311,6 +337,73 @@ router.post('/faces/reset', async (req, res) => {
     await q('DELETE FROM table_face_embeddings WHERE nrp=?', [nrp]);
     res.json({ ok: true });
 });
+
+// === HR Karyawan (rjsmanage.data_karyawan) ===
+// GET /api/hr/karyawan?q=...&page=1&limit=20
+router.get('/hr/karyawan', async (req, res) => {
+    const qstr = (req.query.q || '').trim();
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
+    const offset = (page - 1) * limit;
+    const like = `%${qstr}%`;
+    const where = qstr
+        ? `WHERE nrp LIKE ? OR nama LIKE ? OR departement LIKE ? OR divisi LIKE ? OR jabatan LIKE ?`
+        : '';
+    const params = qstr ? [like, like, like, like, like] : [];
+    const totalRow = await hrq(`SELECT COUNT(*) AS c FROM data_karyawan ${where}`, params);
+    const rows = await hrq(
+        `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status
+    FROM data_karyawan ${where}
+     ORDER BY nama ASC
+     LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+    );
+    res.json({ page, limit, total: Number(totalRow?.[0]?.c || 0), rows });
+});
+
+// GET /api/hr/karyawan/:nrp
+router.get('/hr/karyawan/:nrp', async (req, res) => {
+    const nrp = (req.params.nrp || '').trim();
+    if (!nrp) return res.status(400).json({ error: 'nrp required' });
+    const rows = await hrq(
+        `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status,
+            tmt, tmp_lahir, tgl_lahir, goldar, jnskel, no_ktp, no_kk, npwp,
+            nohp, alamat, kel, kec, kabkota, prov, kodepos, pendidikan,
+            notelp, email, status_pernikahan, kode_pernikahan, norek_bca,
+            status_io, kjk, jam_kerja, istirahat_kerja
+     FROM data_karyawan WHERE nrp=? LIMIT 1`, [nrp]);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+});
+
+
+// Webhook: invalidasi cache per-NRP (dipanggil dari CI/HR saat data berubah)
+router.post('/cache/invalidate', async (req, res) => {
+    try {
+        const { nrp, fetch } = req.body || {};
+        if (!nrp) return res.status(400).json({ error: 'nrp required' });
+        await invalidateNRP(nrp);
+        if (fetch) {
+            // repopulate langsung (read-through)
+            const c = await require('../services/karyawanCache').ensureInCache(nrp);
+            return res.json({ ok: true, repopulated: !!c });
+        }
+        res.json({ ok: true });
+    } catch (e) {
+        console.error(e); res.status(500).json({ error: 'invalidate failed' });
+    }
+});
+
+// Manual trigger full sync (opsional, untuk admin)
+router.post('/cache/sync-now', async (req, res) => {
+    try {
+        const r = await fullSyncFromHR();
+        res.json({ ok: true, ...r });
+    } catch (e) {
+        console.error(e); res.status(500).json({ error: 'sync failed' });
+    }
+});
+
 
 
 module.exports = router;

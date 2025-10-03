@@ -1,0 +1,41 @@
+<% layout('layout') -%>
+    <div class="space-y-3">
+        <h1 class="text-xl font-bold">Data Karyawan (HR)</h1>
+
+        <div class="join w-full">
+            <input id="q" type="text" placeholder="Cari NRP / Nama / Dept / Divisi / Jabatan"
+                class="input input-bordered join-item w-full" />
+            <button id="btnSearch" class="btn join-item">Cari</button>
+        </div>
+
+        <!-- Tabel (desktop) -->
+        <div class="hidden sm:block overflow-x-auto rounded-box border border-base-300">
+            <table class="table table-zebra">
+                <thead>
+                    <tr>
+                        <th>NRP</th>
+                        <th>Nama</th>
+                        <th>Departement</th>
+                        <th>Divisi</th>
+                        <th>Jabatan</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </div>
+
+        <!-- List (mobile) -->
+        <div id="list" class="sm:hidden space-y-2"></div>
+
+        <!-- Pagination -->
+        <div class="flex items-center justify-between">
+            <div id="meta" class="text-xs opacity-70">—</div>
+            <div class="join">
+                <button id="prev" class="btn btn-sm join-item">«</button>
+                <button id="next" class="btn btn-sm join-item">»</button>
+            </div>
+        </div>
+    </div>
+
+    <script defer src="/public/js/karyawan.js"></script>

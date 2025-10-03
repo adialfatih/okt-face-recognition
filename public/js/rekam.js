@@ -15,15 +15,28 @@
             data: {
                 src: async (query) => {
                     if (!query) return [];
-                    const url = '/api/karyawan/search?q=' + encodeURIComponent(query);
-                    return await fetch(url).then(r => r.json());
+                    try {
+                        const url = '/api/karyawan/search?q=' + encodeURIComponent(query);
+                        const resp = await fetch(url, { credentials: 'same-origin' });
+                        if (!resp.ok) return [];
+                        const data = await resp.json().catch(() => []);
+                        return Array.isArray(data) ? data : [];
+                    } catch (e) {
+                        // jaringan atau server error → jangan lempar, cukup kosongkan
+                        return [];
+                    }
                 },
                 keys: ["nrp", "nama"]
             },
             resultsList: {
                 class: "menu bg-base-100 mt-2 rounded-box shadow max-h-60 overflow-auto",
                 maxResults: 10,
-                noResults: true
+                noResults: (el, query) => {
+                    const li = document.createElement('li');
+                    li.className = 'p-2 text-base-content/60';
+                    li.innerText = query ? 'Tidak ada hasil' : 'Ketik NRP/Nama...';
+                    el.appendChild(li);
+                }
             },
             resultItem: {
                 class: "p-2 hover:bg-base-200 cursor-pointer",

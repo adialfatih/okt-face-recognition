@@ -21,7 +21,7 @@ router.get('/test/capture', (req, res) => res.render('test-capture'));
 
 
 // Placeholder pages
-router.get('/karyawan', (req, res) => res.render('placeholder', { title: 'Data Karyawan' }));
+router.get('/karyawan', (req, res) => res.render('karyawan', { title: 'Data Karyawan' }));
 router.get('/cuti', (req, res) => res.render('placeholder', { title: 'Cuti' }));
 router.get('/ijin', (req, res) => res.render('placeholder', { title: 'Ijin' }));
 router.get('/laporan', (req, res) => res.render('placeholder', { title: 'Laporan' }));
