@@ -20,7 +20,7 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 
 
 // Global locals
-app.locals.APP_NAME = 'Absensi Face';
+app.locals.APP_NAME = 'Rindang Jati';
 app.locals.formatDate = (d) => dayjs(d).format('DD MMM YYYY');
 
 

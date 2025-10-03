@@ -71,6 +71,28 @@ function computeLateFlag(kategori, now) {
     const lateAt = dayjs(`${now.format('YYYY-MM-DD')} ${map[kategori]}`);
     return now.isAfter(lateAt) ? 1 : 0;
 }
+function computeLateMinutes(kategori, now) {
+    // Hanya untuk Masuk Shift Pagi/Siang/Malam
+    const startMap = {
+        'Masuk Shift Pagi': '06:00',
+        'Masuk Shift Siang': '14:00',
+        'Masuk Shift Malam': '22:00'
+    };
+    const startStr = startMap[kategori];
+    if (!startStr) return 0;
+
+    // Anchor start time ke tanggal yang tepat
+    // Khusus "Masuk Shift Malam": jika sekarang dini hari (00:00–05:59), anggap start-nya malam sebelumnya 22:00
+    let start = dayjs(`${now.format('YYYY-MM-DD')} ${startStr}`);
+    if (kategori === 'Masuk Shift Malam' && now.hour() < 6) {
+        const prev = now.subtract(1, 'day');
+        start = dayjs(`${prev.format('YYYY-MM-DD')} ${startStr}`);
+    }
+
+    const diffMin = now.diff(start, 'minute');   // bisa negatif bila datang lebih awal
+    if (diffMin < 3) return 0;                   // grace 3 menit untuk perhitungan menit_terlambat
+    return diffMin > 0 ? diffMin : 0;
+}
 
 
 
@@ -237,12 +259,15 @@ router.post('/absen', async (req, res) => {
 
 
         const late = computeLateFlag(kategori, nowObj.now);
-
+        const lateMin = computeLateMinutes(kategori, nowObj.now);
 
         // Anti-dobel (nrp, tanggal, kategori)
         try {
-            await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late) VALUES (?,?,?,?,?)', [
-                best.nrp, nowObj.tanggal, nowObj.jam, kategori, late
+            // await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late) VALUES (?,?,?,?,?)', [
+            //     best.nrp, nowObj.tanggal, nowObj.jam, kategori, late
+            // ]);
+            await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late, menit_terlambat) VALUES (?,?,?,?,?,?)', [
+                best.nrp, nowObj.tanggal, nowObj.jam, kategori, late, lateMin
             ]);
         } catch (e) {
             // Duplicate entry

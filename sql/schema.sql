@@ -58,3 +58,7 @@ UNIQUE KEY uniq_absen (nrp, tanggal, kategori),
 INDEX idx_tanggal (tanggal),
 CONSTRAINT fk_absen_nrp FOREIGN KEY (nrp) REFERENCES table_karyawan(nrp)
 ) ENGINE=InnoDB;
+
+
+ALTER TABLE table_absensi
+  ADD COLUMN menit_terlambat INT NOT NULL DEFAULT 0 AFTER is_late;
