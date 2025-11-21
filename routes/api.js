@@ -365,6 +365,27 @@ router.post('/faces/reset', async (req, res) => {
 });
 
 // GET /api/hr/karyawan?q=...&page=1&limit=20
+// router.get('/hr/karyawan', async (req, res) => {
+//     const qstr = (req.query.q || '').trim();
+//     const page = Math.max(1, parseInt(req.query.page || '1', 10));
+//     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
+//     const offset = (page - 1) * limit;
+//     const like = `%${qstr}%`;
+//     const where = qstr
+//         ? `WHERE nrp LIKE ? OR nama LIKE ? OR departement LIKE ? OR divisi LIKE ? OR jabatan LIKE ?`
+//         : '';
+//     const params = qstr ? [like, like, like, like, like] : [];
+//     const totalRow = await hrq(`SELECT COUNT(*) AS c FROM data_karyawan ${where}`, params);
+//     const rows = await hrq(
+//         `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status
+//     FROM data_karyawan ${where}
+//      ORDER BY nama ASC
+//      LIMIT ? OFFSET ?`,
+//         [...params, limit, offset]
+//     );
+//     res.json({ page, limit, total: Number(totalRow?.[0]?.c || 0), rows });
+// });
+// GET /api/hr/karyawan?q=...&page=1&limit=20
 router.get('/hr/karyawan', async (req, res) => {
     const qstr = (req.query.q || '').trim();
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
@@ -375,15 +396,57 @@ router.get('/hr/karyawan', async (req, res) => {
         ? `WHERE nrp LIKE ? OR nama LIKE ? OR departement LIKE ? OR divisi LIKE ? OR jabatan LIKE ?`
         : '';
     const params = qstr ? [like, like, like, like, like] : [];
+
+    // 1) Total baris di HR (untuk pagination & meta)
     const totalRow = await hrq(`SELECT COUNT(*) AS c FROM data_karyawan ${where}`, params);
+    const totalAll = Number(totalRow?.[0]?.c || 0);
+
+    // 2) Ambil halaman data dari HR
     const rows = await hrq(
         `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status
-    FROM data_karyawan ${where}
-     ORDER BY nama ASC
-     LIMIT ? OFFSET ?`,
+         FROM data_karyawan ${where}
+         ORDER BY nama ASC
+         LIMIT ? OFFSET ?`,
         [...params, limit, offset]
     );
-    res.json({ page, limit, total: Number(totalRow?.[0]?.c || 0), rows });
+
+    // 3) Cek siapa yang sudah punya face embedding di absensi_db_rjs
+    let faceSet = new Set();
+    if (rows.length > 0) {
+        const nrps = rows.map(r => r.nrp);
+        const placeholders = nrps.map(() => '?').join(',');
+        const faceRows = await q(
+            `SELECT DISTINCT nrp FROM table_face_embeddings WHERE nrp IN (${placeholders})`,
+            nrps
+        );
+        faceSet = new Set(faceRows.map(fr => fr.nrp));
+    }
+
+    const mapped = rows.map(r => ({
+        ...r,
+        hasFace: faceSet.has(r.nrp)
+    }));
+
+
+    const [sumRow] = await q(`
+        SELECT 
+            COUNT(*) AS total,
+            SUM(CASE WHEN UPPER(dep) = 'SPINNING' THEN 1 ELSE 0 END) AS spinning,
+            SUM(CASE WHEN UPPER(dep) = 'WEAVING' THEN 1 ELSE 0 END) AS weaving
+        FROM table_karyawan
+    `);
+
+    res.json({
+        page,
+        limit,
+        total: totalAll,     // ini tetap total versi HR, untuk meta "1–20 dari X"
+        rows: mapped,
+        summary: {
+            total: Number(sumRow?.total || 0),
+            spinning: Number(sumRow?.spinning || 0),
+            weaving: Number(sumRow?.weaving || 0)
+        }
+    });
 });
 
 // GET /api/hr/karyawan/:nrp

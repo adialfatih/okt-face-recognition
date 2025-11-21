@@ -6,6 +6,9 @@
   const meta = document.getElementById('meta');
   const prev = document.getElementById('prev');
   const next = document.getElementById('next');
+  const sumTotal = document.getElementById('sumTotal');
+  const sumSpinning = document.getElementById('sumSpinning');
+  const sumWeaving = document.getElementById('sumWeaving');
 
   let page = 1, limit = 20, total = 0, busy = false, lastQ = '';
 
@@ -16,14 +19,42 @@
     if (s === 'TETAP') cls += ' tetap';
     else if (s === 'KONTRAK') cls += ' kontrak';
     else if (s === 'RESIGN') cls += ' resign';
+    else if (s === 'MAGANG') cls += ' magang';
 
     return `<span class="${cls}">${s || '-'}</span>`;
+  }
+  function buildFaceStatusPill(r) {
+    // hasFace: true/false dari backend
+    if (r.hasFace) {
+      return `
+        <span class="face-pill face-ok" title="Wajah sudah terekam">
+          <i class="fa-solid fa-user-check"></i>
+          <span>Face OK</span>
+        </span>
+      `;
+    }
+    return `
+      <span class="face-pill face-missing" title="Belum rekam wajah">
+        <i class="fa-regular fa-user"></i>
+        <span>Belum Rekam</span>
+      </span>
+    `;
+  }
+
+  function buildFaceIcon(r) {
+    if (!r.hasFace) return '';
+    return `
+      <i class="fa-solid fa-user-check text-emerald-500 text-xs sm:text-sm ml-1"
+         title="Wajah sudah terekam"></i>`;
   }
 
   function rowHTML(r) {
     return `
         <tr>
-          <td class="font-mono text-xs sm:text-sm px-3 py-2">${r.nrp}</td>
+          <td class="font-mono text-xs sm:text-sm px-3 py-2 whitespace-nowrap">
+            <span>${r.nrp}</span>
+            ${buildFaceIcon(r)}
+          </td>
           <td class="font-medium text-slate-900 px-3 py-2">${r.nama}</td>
           <td class="text-slate-700 px-3 py-2">${r.dep || '-'}</td>
           <td class="text-slate-700 px-3 py-2">${r.divisi || '-'}</td>
@@ -34,22 +65,31 @@
         </tr>`;
   }
 
+
   function cardHTML(r) {
     const depDiv = `${r.dep || '-'} / ${r.divisi || '-'}`;
     const jab = r.jabatan || '-';
     return `
-        <div class="card-karyawan">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-            <div>
-              <h3>${r.nama}</h3>
-              <p class="meta">NRP: ${r.nrp}</p>
-            </div>
-            ${buildStatusBadge(r.status)}
+      <div class="card-karyawan">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div>
+            <h3>${r.nama}</h3>
+            <p class="meta">
+              NRP: ${r.nrp}
+              ${buildFaceIcon(r)}
+            </p>
+            <p class="meta" style="margin-top:4px;">${depDiv}</p>
+            <p class="meta">${jab}</p>
           </div>
-          <p class="meta" style="margin-top:4px;">${depDiv}</p>
-          <p class="meta">${jab}</p>
-        </div>`;
+          <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;color:#000;">
+            ${buildStatusBadge(r.status)}
+            ${buildFaceStatusPill(r)}
+          </div>
+        </div>
+      </div>`;
   }
+
+
 
   async function load() {
     if (busy) return;
@@ -68,6 +108,17 @@
       const data = await fetch(url).then(r => r.json());
       total = Number(data.total || 0);
       const arr = Array.isArray(data.rows) ? data.rows : [];
+      // Update ringkasan (jika elemen ada)
+      if (data.summary) {
+        if (sumTotal) sumTotal.textContent = data.summary.total ?? total;
+        if (sumSpinning) sumSpinning.textContent = data.summary.spinning ?? '-';
+        if (sumWeaving) sumWeaving.textContent = data.summary.weaving ?? '-';
+      } else {
+        if (sumTotal) sumTotal.textContent = total;
+        if (sumSpinning) sumSpinning.textContent = '-';
+        if (sumWeaving) sumWeaving.textContent = '-';
+      }
+
 
       rows.innerHTML =
         arr.map(rowHTML).join('') ||

@@ -153,9 +153,6 @@ canvas {
 }
 
 #list,
-#list * {
-    background-color: #ffffff !important;
-}
 
 /* Desktop table – zebra bright */
 .table-karyawan {
@@ -223,4 +220,118 @@ canvas {
     border-radius: 999px;
     font-size: 0.7rem;
     font-weight: 600;
+}
+
+/* Base styling */
+.badge-status {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.70rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* Status = TETAP */
+.badge-status.tetap {
+    background: #1d4ed8;
+    /* Biru */
+    color: #ffffff;
+}
+
+/* Status = KONTRAK */
+.badge-status.kontrak {
+    background: #16a34a;
+    /* Hijau */
+    color: #ffffff;
+}
+
+/* Status = MAGANG */
+.badge-status.magang {
+    background: #dc2626;
+    /* Merah */
+    color: #ffffff;
+}
+
+/* Status = RESIGN */
+.badge-status.resign {
+    background: #6b7280;
+    /* Abu-abu */
+    color: #ffffff;
+}
+
+/* Badge status karyawan (desktop + mobile sama) */
+.badge-status {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.70rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    border: none;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+}
+
+/* Status = TETAP */
+.badge-status.tetap {
+    background: #1d4ed8;
+    /* Biru */
+    color: #ffffff;
+}
+
+/* Status = KONTRAK */
+.badge-status.kontrak {
+    background: #16a34a;
+    /* Hijau */
+    color: #ffffff;
+}
+
+/* Status = MAGANG */
+.badge-status.magang {
+    background: #dc2626;
+    /* Merah */
+    color: #ffffff;
+}
+
+/* Status = RESIGN */
+.badge-status.resign {
+    background: #6b7280;
+    /* Abu-abu */
+    color: #ffffff;
+}
+
+
+/* Face status pill (mobile + bisa dipakai di desktop kalau mau) */
+.face-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.face-pill i {
+    font-size: 0.7rem;
+}
+
+/* Sudah rekam wajah */
+.face-pill.face-ok {
+    background: #dcfce7;
+    /* hijau muda */
+    color: #166534;
+}
+
+/* Belum rekam wajah */
+.face-pill.face-missing {
+    background: #fee2e2;
+    /* merah muda */
+    color: #b91c1c;
 }
