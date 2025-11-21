@@ -81,3 +81,146 @@ canvas {
     transform: translateY(-2px);
     /* soft lift effect */
 }
+
+.table-karyawan thead tr th {
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+}
+
+.table-karyawan tbody tr:nth-child(odd) {
+    background-color: rgba(248, 250, 252, 0.95);
+    /* slate-50-ish */
+}
+
+.table-karyawan tbody tr:nth-child(even) {
+    background-color: #ffffff;
+}
+
+.table-karyawan tbody tr:hover {
+    background-color: rgba(186, 230, 253, 0.40);
+    /* sky-200/40 */
+    transition: background-color 0.2s ease;
+}
+
+/* List mobile (kartu karyawan yang di-render oleh JS) */
+#list .card-karyawan {
+    background-color: #ffffff;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(186, 230, 253, 0.8);
+    /* sky-200 */
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    padding: 0.75rem 0.9rem;
+}
+
+#list .card-karyawan h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+    /* slate-900 */
+    margin-bottom: 0.15rem;
+}
+
+#list .card-karyawan .meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    /* slate-500 */
+}
+
+#list .card-karyawan .badge-status {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+}
+
+/* Contoh warna status (bisa dipakai di JS) */
+.badge-status.tetap {
+    background-color: rgba(22, 163, 74, 0.1);
+    /* green-600/10 */
+    color: #15803d;
+}
+
+.badge-status.kontrak {
+    background-color: rgba(37, 99, 235, 0.08);
+    /* blue-600/8 */
+    color: #1d4ed8;
+}
+
+.badge-status.resign {
+    background-color: rgba(239, 68, 68, 0.08);
+    /* red-500/8 */
+    color: #b91c1c;
+}
+
+#list,
+#list * {
+    background-color: #ffffff !important;
+}
+
+/* Desktop table – zebra bright */
+.table-karyawan {
+    background-color: #ffffff !important;
+}
+
+.table-karyawan thead tr th {
+    color: #0f172a !important;
+    /* slate-900 */
+    font-weight: 700;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(186, 230, 253, 0.8);
+    /* sky-200 */
+}
+
+.table-karyawan tbody tr td {
+    color: #1e293b !important;
+    /* slate-800 */
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+/* Zebra rows - very bright */
+.table-karyawan tbody tr:nth-child(odd) {
+    background-color: #f8fafc !important;
+    /* slate-50 */
+}
+
+.table-karyawan tbody tr:nth-child(even) {
+    background-color: #ffffff !important;
+}
+
+/* Hover row */
+.table-karyawan tbody tr:hover {
+    background-color: #e0f2fe !important;
+    /* sky-100 */
+    transition: background-color 0.15s ease;
+}
+
+/* Mobile card style */
+#list .card-karyawan {
+    background-color: #ffffff !important;
+    border: 1px solid rgba(125, 211, 252, 0.5);
+    /* sky-300 */
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+#list .card-karyawan h3 {
+    color: #0f172a;
+    /* slate-900 */
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+#list .card-karyawan p {
+    color: #475569;
+    /* slate-600 */
+    font-size: 0.85rem;
+}
+
+#list .badge-status {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}

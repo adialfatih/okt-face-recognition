@@ -1,26 +1,62 @@
 <% layout('layout') -%>
-    <div class="space-y-4">
-        <h1 class="text-xl font-bold">Rekam Wajah</h1>
-        <!-- <label class="form-control w-full">
-            <div class="label"><span class="label-text">NRP / Nama</span></div>
-            <input id="search" type="text" placeholder="Ketik NRP/Nama minimal 2 huruf, lalu pilih dari daftar"
-                class="input input-bordered w-full" />
-            <ul id="suggest" class="menu bg-base-100 mt-2 rounded-box shadow max-h-60 overflow-auto hidden"></ul>
-        </label> -->
-        <label class="form-control w-full">
-            <div class="label"><span class="label-text">NRP / Nama</span></div>
-            <input id="search" type="text" placeholder="Ketik NRP/Nama..." class="input input-bordered w-full" />
-        </label>
 
-        <div id="selectedInfo" class="text-sm text-base-content/70 hidden">
-            Dipilih: <span id="selectedText" class="font-semibold"></span>
+    <section class="space-y-4">
+        <!-- HEADER -->
+        <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-sky-600 text-white p-5 shadow-lg">
+            <h1 class="text-2xl font-bold mb-1">
+                <i class="fa-solid fa-camera mr-2"></i> Rekam Wajah Karyawan
+            </h1>
+            <p class="opacity-90 text-sm">
+                Cari karyawan berdasarkan NRP atau nama, lalu mulai proses perekaman wajah.
+            </p>
         </div>
 
-        <div class="mt-2">
-            <a id="btnStart" href="#" class="btn btn-primary btn-block disabled" aria-disabled="true">Mulai Rekam</a>
-        </div>
-    </div>
-    <!-- autoComplete.js (CSS & JS) -->
+        <!-- FORM CARD -->
+        <div class="card bg-white/95 shadow-sm border border-sky-50">
+            <div class="card-body space-y-4">
 
+                <!-- INPUT SEARCH -->
+                <div class="form-control w-full">
+                    <label class="label pb-1">
+                        <span class="label-text text-sm font-semibold text-slate-700">
+                            <i class="fa-solid fa-id-card mr-1 text-sky-600"></i> NRP / Nama Karyawan
+                        </span>
+                    </label>
+                    <input id="search" type="text" placeholder="Ketik NRP atau nama karyawan..."
+                        class="input input-bordered w-full focus:outline-none focus:ring-2 focus:ring-sky-300 focus:border-sky-400"
+                        autocomplete="off" />
+                    <label class="label pt-1">
+                        <span class="label-text-alt text-[11px] text-slate-500">
+                            Gunakan minimal 2 karakter untuk mulai pencarian.
+                        </span>
+                    </label>
+                </div>
+
+                <!-- SELECTED INFO -->
+                <div id="selectedInfo" class="text-sm text-slate-600 hidden">
+                    Dipilih:
+                    <span id="selectedText" class="font-semibold text-sky-700"></span>
+                </div>
+
+                <!-- ACTION BUTTON -->
+                <div class="pt-2">
+                    <a id="btnStart" href="#"
+                        class="btn btn-primary btn-block disabled flex items-center justify-center gap-2"
+                        aria-disabled="true">
+                        <i class="fa-solid fa-video"></i>
+                        <span>Mulai Rekam Wajah</span>
+                    </a>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- INFO NOTE -->
+        <p class="text-xs text-slate-500">
+            Pastikan karyawan sudah terdaftar di sistem HR. Jika belum ditemukan, hubungi bagian HR terlebih dahulu.
+        </p>
+    </section>
+
+    <!-- autoComplete.js (JS only, CSS sudah dari head.ejs) -->
     <script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js@10.2.7/dist/autoComplete.min.js"></script>
     <script defer src="/public/js/rekam.js"></script>

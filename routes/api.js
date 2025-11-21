@@ -240,18 +240,20 @@ router.post('/faces', async (req, res) => {
     }
 });
 
-
-
-
 // --- Absensi submit (anti-dobel per hari & kategori) ---
 router.post('/absen', async (req, res) => {
     try {
         const { kategori, descriptors, frameBase64 } = req.body;
-        if (!isValidKategori(kategori)) return res.status(400).json({ error: 'Kategori tidak valid' });
-        if (!Array.isArray(descriptors) || descriptors.length === 0) return res.status(400).json({ error: 'No descriptors' });
+        if (!isValidKategori(kategori)) {
+            return res.status(400).json({ error: 'Kategori tidak valid' });
+        }
+        if (!Array.isArray(descriptors) || descriptors.length === 0) {
+            return res.status(400).json({ error: 'No descriptors' });
+        }
 
         const nowObj = getNow();
 
+        // Cari match terbaik
         await ensureEmbeddings();
         let best = { nrp: null, dist: 9e9 };
         for (const e of EMB_CACHE) {
@@ -261,68 +263,92 @@ router.post('/absen', async (req, res) => {
             }
         }
 
-        // Multi-face handled on client; here just verify threshold
+        // Jika tidak ketemu / di atas threshold -> log unknown
         if (!best.nrp || best.dist > FACE_THRESHOLD) {
-            await q('INSERT INTO table_deteksi_log (context, kategori, status, distance, frame_snapshot) VALUES (?,?,?,?,?)', [
-                'absensi', kategori, 'unknown', best.dist || null, frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
-            ]);
+            await q(
+                'INSERT INTO table_deteksi_log (context, kategori, status, distance, frame_snapshot) VALUES (?,?,?,?,?)',
+                [
+                    'absensi',
+                    kategori,
+                    'unknown',
+                    best.dist || null,
+                    frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
+                ]
+            );
             return res.json({ ok: false, reason: 'unknown' });
         }
 
+        // Ambil profil dari cache (HR)
+        const info = await getProfilUI(best.nrp);
+        if (!info) {
+            return res.json({ ok: false, reason: 'no-profile' });
+        }
+        if (!ACTIVE_STATUSES.has((info.status || '').toUpperCase())) {
+            return res.json({ ok: false, reason: 'inactive', match: { ...best, ...info } });
+        }
 
         const late = computeLateFlag(kategori, nowObj.now);
         const lateMin = computeLateMinutes(kategori, nowObj.now);
 
         // Anti-dobel (nrp, tanggal, kategori)
         try {
-            // await q('INSERT INTO table_absensi (nrp, tanggal, jam, kategori, is_late, menit_terlambat) VALUES (?,?,?,?,?,?)', [
-            //     best.nrp, nowObj.tanggal, nowObj.jam, kategori, late, lateMin
-            // ]);
-            await q(`
-     INSERT INTO table_absensi
-       (nrp, tanggal, jam, kategori, nama_snapshot, dep_snapshot, divisi_snapshot, jabatan_snapshot, is_late, menit_terlambat)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
-   `, [
-                best.nrp, nowObj.tanggal, nowObj.jam, kategori,
-                info.nama, info.dep, info.divisi, info.jabatan,
-                late, lateMin
-            ]);
+            await q(
+                `
+        INSERT INTO table_absensi
+          (nrp, tanggal, jam, kategori,
+           nama_snapshot, dep_snapshot, divisi_snapshot, jabatan_snapshot,
+           is_late, menit_terlambat)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+      `,
+                [
+                    best.nrp,
+                    nowObj.tanggal,
+                    nowObj.jam,
+                    kategori,
+                    info.nama,
+                    info.dep,
+                    info.divisi,
+                    info.jabatan,
+                    late,
+                    lateMin
+                ]
+            );
         } catch (e) {
             // Duplicate entry
-            // Duplicate entry: kirimkan info karyawan + kategori agar UI bisa menulis nama/shift
-            // const [infoDup] = await q(
-            //     'SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1',
-            //     [best.nrp]
-            // );
-            // return res.json({
-            //     ok: false,
-            //     reason: 'duplicate',
-            //     kategori,
-            //     match: { ...best, ...infoDup }  // {nrp, nama, dep, divisi, jabatan, dist}
-            // });
             return res.json({
                 ok: false,
                 reason: 'duplicate',
                 kategori,
-                match: { ...best, ...info }   // pakai info dari cache
+                match: { ...best, ...info } // pakai info dari cache
             });
         }
 
+        // Log deteksi sukses
+        await q(
+            'INSERT INTO table_deteksi_log (context, kategori, nrp_detected, distance, status, frame_snapshot) VALUES (?,?,?,?,?,?)',
+            [
+                'absensi',
+                kategori,
+                best.nrp,
+                best.dist,
+                'recognized',
+                frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
+            ]
+        );
 
-        await q('INSERT INTO table_deteksi_log (context, kategori, nrp_detected, distance, status, frame_snapshot) VALUES (?,?,?,?,?,?)', [
-            'absensi', kategori, best.nrp, best.dist, 'recognized', frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
-        ]);
-        // Return profile
-        const info = await getProfilUI(best.nrp);
-        if (!info) return res.json({ ok: false, reason: 'no-profile' });
-        if (!ACTIVE_STATUSES.has((info.status || '').toUpperCase())) {
-            return res.json({ ok: false, reason: 'inactive', match: info });
-        }
-        //res.json({ ok: true, match: { ...best, ...info }, is_late: late });
+        // Sukses
+        return res.json({
+            ok: true,
+            match: { ...best, ...info },
+            is_late: late,
+            menit_terlambat: lateMin
+        });
     } catch (e) {
-        console.error(e); res.status(500).json({ error: 'absen failed' });
+        console.error(e);
+        res.status(500).json({ error: 'absen failed' });
     }
 });
+
 // --- Count embeddings by NRP ---
 router.get('/faces/count', async (req, res) => {
     const nrp = (req.query.nrp || '').trim();
@@ -338,7 +364,6 @@ router.post('/faces/reset', async (req, res) => {
     res.json({ ok: true });
 });
 
-// === HR Karyawan (rjsmanage.data_karyawan) ===
 // GET /api/hr/karyawan?q=...&page=1&limit=20
 router.get('/hr/karyawan', async (req, res) => {
     const qstr = (req.query.q || '').trim();

@@ -1,28 +1,124 @@
 <% layout('layout') -%>
-    <div class="space-y-3">
-        <div class="text-center">
-            <div class="badge badge-lg">Rekam untuk NRP: <%= nrp %>
+
+    <section class="space-y-4">
+
+        <!-- HEADER -->
+        <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-sky-600 text-white p-5 shadow-lg">
+            <h1 class="text-2xl font-bold mb-1 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-video"></i>
+                <span>Rekam Wajah Karyawan</span>
+            </h1>
+            <p class="text-center text-sm opacity-90">
+                NRP: <span class="font-semibold tracking-wide">
+                    <%= nrp %>
+                </span>
+            </p>
+            <p class="text-center text-[11px] mt-1 opacity-80">
+                Pastikan wajah tunggal, jelas, dan berada di tengah frame selama proses perekaman (15 sampel).
+            </p>
+        </div>
+
+        <!-- MAIN CONTENT CARD -->
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)] items-start">
+
+            <!-- LEFT: VIDEO & CAMERA -->
+            <div class="card bg-white shadow-md border border-sky-100">
+                <div class="card-body space-y-3">
+
+                    <div class="flex items-center justify-between mb-1">
+                        <h2 class="text-sm font-semibold text-slate-700">
+                            <i class="fa-solid fa-camera-retro mr-1 text-sky-600"></i>
+                            Kamera
+                        </h2>
+                        <button id="btnSwitchCam"
+                            class="btn btn-xs md:btn-sm bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200">
+                            <i class="fa-solid fa-arrows-rotate mr-1"></i>
+                            Ganti Kamera
+                        </button>
+                    </div>
+
+                    <div class="relative rounded-2xl overflow-hidden border border-sky-100 bg-slate-900/5">
+                        <video id="video" autoplay playsinline
+                            class="w-full h-auto rounded-2xl object-cover bg-black/80">
+                        </video>
+                        <canvas id="overlay" class="absolute inset-0"></canvas>
+                    </div>
+
+                    <p class="text-[11px] text-slate-500">
+                        Tip: Posisikan wajah di tengah, pandang kamera, dan gerakkan kepala sedikit ke kiri-kanan untuk
+                        variasi sampel.
+                    </p>
+                </div>
+            </div>
+
+            <!-- RIGHT: CONTROLS & STATUS -->
+            <div class="space-y-4">
+
+                <!-- CONTROL CARD -->
+                <div class="card bg-white shadow-md border border-sky-100">
+                    <div class="card-body space-y-4">
+
+                        <!-- Counter & status -->
+                        <div class="flex flex-col gap-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-semibold text-slate-700">Progres Rekaman</span>
+                                <span id="counter" class="badge badge-info text-xs">
+                                    0 / 15
+                                </span>
+                            </div>
+                            <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                                <!-- progress bar pseudo (diupdate via JS nanti kalau mau) -->
+                                <div id="fakeProgressBar"
+                                    class="h-full bg-gradient-to-r from-sky-400 to-sky-500 transition-all duration-300"
+                                    style="width:0%;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="flex flex-wrap items-center justify-center gap-2 pt-1">
+                            <button id="btnRecStart" class="btn btn-primary flex items-center gap-2">
+                                <i class="fa-solid fa-circle-dot"></i>
+                                <span>Mulai Rekam</span>
+                            </button>
+
+                            <button id="btnRedo" class="btn btn-warning btn-sm flex items-center gap-1 hidden"
+                                style="display:none;">
+                                <i class="fa-solid fa-rotate-left"></i>
+                                <span>Ulangi</span>
+                            </button>
+
+                            <button id="btnSave" class="btn btn-success btn-sm flex items-center gap-1" disabled>
+                                <i class="fa-solid fa-floppy-disk"></i>
+                                <span>Simpan ke Database</span>
+                            </button>
+                        </div>
+
+                        <!-- Info status -->
+                        <div id="recStatus" class="text-center text-xs text-slate-500 hidden">
+                            Menyimpan data face recognition, mohon tunggu…
+                        </div>
+
+                        <div id="recActions" class="flex items-center justify-center gap-2 hidden">
+                            <!-- ini akan di-manage oleh JS sesuai state -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INFO NOTE -->
+                <div class="text-xs text-slate-500">
+                    <p>
+                        Sistem akan mengambil hingga <span class="font-semibold text-sky-700">15 sampel</span> wajah.
+                        Rekam ulang akan menghapus data lama untuk NRP ini.
+                    </p>
+                </div>
             </div>
         </div>
-        <div class="relative">
-            <video id="video" autoplay playsinline class="w-full rounded-box"></video>
-            <canvas id="overlay" class="absolute inset-0"></canvas>
-            <div class="absolute right-2 top-2 z-50">
-                <button id="btnSwitchCam" class="btn btn-xs md:btn-sm">Ganti Kamera</button>
-            </div>
-        </div>
-        <!-- <div class="text-center"><span id="counter" class="badge badge-info">0 / 15</span></div> -->
-        <div class="flex items-center justify-center gap-3">
-            <button id="btnRecStart" class="btn btn-primary">Mulai Rekam</button>
-            <span id="counter" class="badge badge-info">0 / 15</span>
-        </div>
-        <div id="recStatus" class="text-center text-sm opacity-70 hidden">Menyimpan face recognition…</div>
-        <div id="recActions" class="flex items-center justify-center gap-2 hidden">
-            <button id="btnSave" class="btn btn-success btn-sm" disabled>Simpan ke database</button>
-            <button id="btnRedo" class="btn btn-warning btn-sm">Rekam ulang</button>
-        </div>
-        <div id="toastArea" class="fixed inset-x-0 top-4 flex justify-center z-50"></div>
-    </div>
+
+        <!-- AREA TOAST -->
+        <div id="toastArea" class="fixed inset-x-0 top-4 flex justify-center z-50 pointer-events-none"></div>
+    </section>
+
     <script defer src="/public/js/face-common.js"></script>
     <script defer>window.__NRP__ = '<%= nrp %>';</script>
     <script defer src="/public/js/rekam.js"></script>

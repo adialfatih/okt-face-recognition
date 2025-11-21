@@ -9,7 +9,6 @@ router.get('/', (req, res) => res.render('dashboard'));
 router.get('/absensi', (req, res) => res.render('absensi-start'));
 router.get('/absensi/capture', (req, res) => res.render('absensi-capture', { kategori: req.query.k || '' }));
 
-
 // Rekam wajah
 router.get('/rekam', (req, res) => res.render('rekam-start'));
 router.get('/rekam/capture', (req, res) => res.render('rekam-capture', { nrp: req.query.nrp || '' }));

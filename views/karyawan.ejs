@@ -1,41 +1,105 @@
 <% layout('layout') -%>
-    <div class="space-y-3">
-        <h1 class="text-xl font-bold">Data Karyawan (HR)</h1>
 
-        <div class="join w-full">
-            <input id="q" type="text" placeholder="Cari NRP / Nama / Dept / Divisi / Jabatan"
-                class="input input-bordered join-item w-full" />
-            <button id="btnSearch" class="btn join-item">Cari</button>
+    <section class="space-y-4">
+
+        <!-- HEADER -->
+        <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-sky-600 text-white p-5 shadow-lg">
+            <h1 class="text-2xl font-bold mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-users"></i>
+                <span>Data Karyawan (HR)</span>
+            </h1>
+            <p class="opacity-90 text-sm">
+                Data ini ditarik langsung dari sistem HR (rjsmanage.data_karyawan). Gunakan pencarian dan navigasi
+                halaman untuk melihat karyawan.
+            </p>
         </div>
 
-        <!-- Tabel (desktop) -->
-        <div class="hidden sm:block overflow-x-auto rounded-box border border-base-300">
-            <table class="table table-zebra">
-                <thead>
-                    <tr>
-                        <th>NRP</th>
-                        <th>Nama</th>
-                        <th>Departement</th>
-                        <th>Divisi</th>
-                        <th>Jabatan</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="rows"></tbody>
-            </table>
-        </div>
+        <!-- FILTER & SEARCH -->
+        <div class="card bg-white shadow-sm border border-sky-100">
+            <div class="card-body space-y-3">
 
-        <!-- List (mobile) -->
-        <div id="list" class="sm:hidden space-y-2"></div>
+                <!-- Search Bar -->
+                <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+                    <label class="flex-1 form-control">
+                        <span class="label-text text-sm font-semibold text-slate-700 mb-1">
+                            <i class="fa-solid fa-magnifying-glass mr-1 text-sky-600"></i>
+                            Pencarian Karyawan
+                        </span>
+                        <div class="join w-full">
+                            <input id="q" type="text" placeholder="Cari NRP / Nama / Departement / Divisi / Jabatan"
+                                class="input input-bordered join-item w-full bg-white border-sky-200
+                     focus:outline-none focus:ring-2 focus:ring-sky-300 focus:border-sky-400" />
+                            <button id="btnSearch"
+                                class="btn join-item bg-sky-600 hover:bg-sky-700 border-sky-600 text-white">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <span class="hidden sm:inline ml-1">Cari</span>
+                            </button>
+                        </div>
+                        <span class="label-text-alt text-[11px] text-slate-500 mt-1">
+                            Tekan Enter atau klik tombol cari untuk memuat data dari HR.
+                        </span>
+                    </label>
 
-        <!-- Pagination -->
-        <div class="flex items-center justify-between">
-            <div id="meta" class="text-xs opacity-70">—</div>
-            <div class="join">
-                <button id="prev" class="btn btn-sm join-item">«</button>
-                <button id="next" class="btn btn-sm join-item">»</button>
+                </div>
+
+                <!-- Info kecil -->
+                <p class="text-[11px] text-slate-500">
+                    Pencarian dilakukan ke server HR, jadi mungkin membutuhkan sedikit waktu saat pertama kali memuat.
+                </p>
             </div>
         </div>
-    </div>
+
+        <!-- TABEL DESKTOP -->
+        <div class="hidden sm:block">
+            <div class="overflow-x-auto rounded-2xl border border-sky-100 bg-white shadow-sm">
+                <table class="table table-sm table-karyawan">
+                    <thead class="bg-sky-50 text-slate-700 text-xs uppercase">
+                        <tr>
+                            <th class="whitespace-nowrap">NRP</th>
+                            <th>Nama</th>
+                            <th class="whitespace-nowrap">Departement</th>
+                            <th>Divisi</th>
+                            <th>Jabatan</th>
+                            <th class="whitespace-nowrap">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rows" class="text-sm">
+                        <!-- Diisi oleh karyawan.js -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- LIST MOBILE -->
+        <div id="list" class="sm:hidden space-y-2">
+            <!-- Diisi oleh karyawan.js -->
+        </div>
+
+        <!-- PAGINATION -->
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-2">
+
+            <!-- Meta info -->
+            <div id="meta" class="text-xs text-slate-500">
+                —
+            </div>
+
+            <!-- Pagination controls -->
+            <div class="flex items-center justify-end gap-2">
+                <div class="join">
+                    <button id="prev"
+                        class="btn btn-sm join-item bg-white border border-sky-100 hover:bg-sky-50 text-slate-700">
+                        <i class="fa-solid fa-angle-left"></i>
+                        <span class="hidden sm:inline ml-1">Sebelumnya</span>
+                    </button>
+                    <button id="next"
+                        class="btn btn-sm join-item bg-white border border-sky-100 hover:bg-sky-50 text-slate-700">
+                        <span class="hidden sm:inline mr-1">Berikutnya</span>
+                        <i class="fa-solid fa-angle-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </section>
 
     <script defer src="/public/js/karyawan.js"></script>

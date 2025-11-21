@@ -1,0 +1,78 @@
+<% layout('auth-layout') -%>
+
+    <section class="min-h-[70vh] flex items-center justify-center">
+        <div class="w-full">
+
+            <!-- Header card -->
+            <div class="mb-4 text-center">
+                <h1 class="text-2xl font-extrabold text-sky-700">
+                    <i class="fa-solid fa-user-lock mr-2"></i>
+                    Login Aplikasi Absensi
+                </h1>
+                <p class="text-xs text-slate-500 mt-1">
+                    Silakan masuk menggunakan akun yang telah terdaftar.
+                </p>
+            </div>
+
+            <!-- Card -->
+            <div class="card bg-white shadow-lg border border-sky-100">
+                <div class="card-body space-y-4">
+
+                    <% if (typeof error !=='undefined' && error) { %>
+                        <div class="alert alert-error py-2 text-sm">
+                            <i class="fa-solid fa-circle-exclamation"></i>
+                            <span>
+                                <%= error %>
+                            </span>
+                        </div>
+                        <% } %>
+
+                            <form action="/login" method="post" class="space-y-4">
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text text-slate-700 text-sm">Username</span>
+                                    </label>
+                                    <label
+                                        class="input input-bordered flex items-center gap-2 bg-sky-50/60 border-sky-100 focus-within:border-sky-400">
+                                        <i class="fa-solid fa-user text-sky-500"></i>
+                                        <input type="text" name="username" placeholder="Masukkan username"
+                                            class="grow bg-transparent text-sm"
+                                            value="<%= (old && old.username) || '' %>" autocomplete="username"
+                                            required />
+                                    </label>
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text text-slate-700 text-sm">Password</span>
+                                    </label>
+                                    <label
+                                        class="input input-bordered flex items-center gap-2 bg-sky-50/60 border-sky-100 focus-within:border-sky-400">
+                                        <i class="fa-solid fa-lock text-sky-500"></i>
+                                        <input type="password" name="password" placeholder="Masukkan password"
+                                            class="grow bg-transparent text-sm" autocomplete="current-password"
+                                            required />
+                                    </label>
+                                </div>
+
+                                <div class="form-control mt-2">
+                                    <button type="submit"
+                                        class="btn btn-primary w-full flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-right-to-bracket"></i>
+                                        <span>Masuk</span>
+                                    </button>
+                                </div>
+
+                            </form>
+
+                            <p class="text-[11px] text-center text-slate-400 mt-2">
+                                &copy; <span class="font-semibold text-sky-600">2025</span> By : <span
+                                    class="font-semibold text-sky-600">IT Rindang Jati</span> All Right Reserved
+                            </p>
+
+                </div>
+            </div>
+
+        </div>
+    </section>
