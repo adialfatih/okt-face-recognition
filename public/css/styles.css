@@ -20,3 +20,64 @@ canvas {
 .autoComplete_result {
     @apply p-2 hover:bg-base-200 cursor-pointer;
 }
+
+/* ================================
+   THEME FIX — Drawer & Bottom Nav
+   ================================ */
+
+/* Drawer Menu Hover */
+.drawer-side .menu li>a:hover,
+.drawer-side .menu li>a:focus {
+    background-color: rgba(125, 211, 252, 0.25);
+    /* sky-300/25 */
+    color: #0369a1 !important;
+    /* sky-700 */
+}
+
+/* Active item in bottom nav */
+.btm-nav>a.active {
+    background-color: rgba(56, 189, 248, 0.15);
+    /* sky-400/15 */
+    color: #0284c7 !important;
+}
+
+/* Bottom nav hover */
+.btm-nav>a:hover {
+    background-color: rgba(56, 189, 248, 0.10);
+    /* sky-400/10 */
+    color: #0369a1 !important;
+}
+
+.drawer-side .menu li>a,
+.btm-nav>a {
+    transition: background-color 0.25s ease,
+        color 0.25s ease,
+        transform 0.25s ease;
+}
+
+/* Drawer Hover */
+.drawer-side .menu li>a:hover,
+.drawer-side .menu li>a:focus {
+    background-color: rgba(125, 211, 252, 0.25);
+    /* sky-300/25 */
+    color: #0369a1 !important;
+    /* sky-700 */
+    transform: translateX(4px);
+    /* small slide effect */
+}
+
+/* Bottom nav active */
+.btm-nav>a.active {
+    background-color: rgba(56, 189, 248, 0.15);
+    /* sky-400/15 */
+    color: #0284c7 !important;
+}
+
+/* Bottom nav hover */
+.btm-nav>a:hover {
+    background-color: rgba(56, 189, 248, 0.10);
+    /* sky-400/10 */
+    color: #0369a1 !important;
+    transform: translateY(-2px);
+    /* soft lift effect */
+}

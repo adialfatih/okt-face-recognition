@@ -5,11 +5,30 @@
     <%- include('partials/head') %>
 </head>
 
-<body class="min-h-screen bg-base-200 font-[Inter]">
-    <%- include('partials/nav') %>
-        <main class="p-3 sm:p-6">
-            <%- body %>
-        </main>
+<body class="min-h-screen font-[Inter] scroll-smooth bg-gradient-to-br from-sky-50 via-sky-100 to-white">
+
+    <div class="drawer lg:drawer-open">
+        <input id="drawer-menu" type="checkbox" class="drawer-toggle" />
+
+        <!-- MAIN CONTENT -->
+        <div class="drawer-content min-h-screen flex flex-col">
+            <%- include('partials/nav') %>
+
+                <main class="p-3 sm:p-6 max-w-6xl mx-auto w-full pb-24">
+                    <%- body %>
+                </main>
+
+                <!-- Footer tipis (desktop / tablet) -->
+                <%- include('partials/footer') %>
+        </div>
+
+        <!-- DRAWER SIDE -->
+        <%- include('partials/drawer') %>
+    </div>
+
+    <!-- Bottom Navbar (mobile only) -->
+    <%- include('partials/bottomnav') %>
+
 </body>
 
 </html>
