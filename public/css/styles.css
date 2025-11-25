@@ -1,4 +1,7 @@
-/* Mobile-first tweaks */
+/* ============================
+   VIDEO & CANVAS (FACE CAPTURE)
+   ============================ */
+
 video {
     max-height: 70vh;
     object-fit: contain;
@@ -9,48 +12,52 @@ canvas {
     pointer-events: none;
 }
 
+/* ============================
+   AUTOCOMPLETE (REKAM NRP/NAMA)
+   ============================ */
+
+/* Catatan: @apply hanya berfungsi jika pakai build Tailwind.
+   Kalau hanya CDN, baris @apply akan diabaikan browser. */
+
 .autoComplete_wrapper>input {
-    @apply input input-bordered w-full;
+    /* fallback styling kalau @apply tidak aktif */
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    font-size: 0.9rem;
 }
 
 .autoComplete_wrapper>ul {
-    @apply menu bg-base-100 mt-2 rounded-box shadow max-h-60 overflow-auto;
+    margin-top: 0.25rem;
+    max-height: 15rem;
+    overflow: auto;
+    border-radius: 0.75rem;
+    background-color: #ffffff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+    list-style: none;
+    padding: 0;
 }
 
 .autoComplete_result {
-    @apply p-2 hover:bg-base-200 cursor-pointer;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.autoComplete_result:hover {
+    background-color: #e0f2fe;
+    /* sky-100 */
 }
 
 /* ================================
-   THEME FIX — Drawer & Bottom Nav
+   THEME — Drawer & Bottom Nav
    ================================ */
-
-/* Drawer Menu Hover */
-.drawer-side .menu li>a:hover,
-.drawer-side .menu li>a:focus {
-    background-color: rgba(125, 211, 252, 0.25);
-    /* sky-300/25 */
-    color: #0369a1 !important;
-    /* sky-700 */
-}
-
-/* Active item in bottom nav */
-.btm-nav>a.active {
-    background-color: rgba(56, 189, 248, 0.15);
-    /* sky-400/15 */
-    color: #0284c7 !important;
-}
-
-/* Bottom nav hover */
-.btm-nav>a:hover {
-    background-color: rgba(56, 189, 248, 0.10);
-    /* sky-400/10 */
-    color: #0369a1 !important;
-}
 
 .drawer-side .menu li>a,
 .btm-nav>a {
-    transition: background-color 0.25s ease,
+    transition:
+        background-color 0.25s ease,
         color 0.25s ease,
         transform 0.25s ease;
 }
@@ -82,81 +89,14 @@ canvas {
     /* soft lift effect */
 }
 
-.table-karyawan thead tr th {
-    font-weight: 600;
-    font-size: 11px;
-    letter-spacing: 0.03em;
-}
+/* ================================
+   TABEL KARYAWAN (DESKTOP)
+   ================================ */
 
-.table-karyawan tbody tr:nth-child(odd) {
-    background-color: rgba(248, 250, 252, 0.95);
-    /* slate-50-ish */
-}
-
-.table-karyawan tbody tr:nth-child(even) {
-    background-color: #ffffff;
-}
-
-.table-karyawan tbody tr:hover {
-    background-color: rgba(186, 230, 253, 0.40);
-    /* sky-200/40 */
-    transition: background-color 0.2s ease;
-}
-
-/* List mobile (kartu karyawan yang di-render oleh JS) */
-#list .card-karyawan {
-    background-color: #ffffff;
-    border-radius: 0.75rem;
-    border: 1px solid rgba(186, 230, 253, 0.8);
-    /* sky-200 */
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
-    padding: 0.75rem 0.9rem;
-}
-
-#list .card-karyawan h3 {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #0f172a;
-    /* slate-900 */
-    margin-bottom: 0.15rem;
-}
-
-#list .card-karyawan .meta {
-    font-size: 0.75rem;
-    color: #64748b;
-    /* slate-500 */
-}
-
-#list .card-karyawan .badge-status {
-    font-size: 0.7rem;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-}
-
-/* Contoh warna status (bisa dipakai di JS) */
-.badge-status.tetap {
-    background-color: rgba(22, 163, 74, 0.1);
-    /* green-600/10 */
-    color: #15803d;
-}
-
-.badge-status.kontrak {
-    background-color: rgba(37, 99, 235, 0.08);
-    /* blue-600/8 */
-    color: #1d4ed8;
-}
-
-.badge-status.resign {
-    background-color: rgba(239, 68, 68, 0.08);
-    /* red-500/8 */
-    color: #b91c1c;
-}
-
-#list,
-
-/* Desktop table – zebra bright */
 .table-karyawan {
+    width: 100%;
     background-color: #ffffff !important;
+    border-collapse: collapse;
 }
 
 .table-karyawan thead tr th {
@@ -164,6 +104,8 @@ canvas {
     /* slate-900 */
     font-weight: 700;
     font-size: 12px;
+    letter-spacing: 0.03em;
+    padding: 8px 12px;
     border-bottom: 1px solid rgba(186, 230, 253, 0.8);
     /* sky-200 */
 }
@@ -171,8 +113,8 @@ canvas {
 .table-karyawan tbody tr td {
     color: #1e293b !important;
     /* slate-800 */
-    padding-top: 10px;
-    padding-bottom: 10px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
 }
 
 /* Zebra rows - very bright */
@@ -192,14 +134,17 @@ canvas {
     transition: background-color 0.15s ease;
 }
 
-/* Mobile card style */
+/* ================================
+   LIST KARYAWAN (MOBILE CARD)
+   ================================ */
+
 #list .card-karyawan {
     background-color: #ffffff !important;
     border: 1px solid rgba(125, 211, 252, 0.5);
     /* sky-300 */
     border-radius: 12px;
     padding: 12px 14px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
 }
 
 #list .card-karyawan h3 {
@@ -207,65 +152,23 @@ canvas {
     /* slate-900 */
     font-size: 1rem;
     font-weight: 700;
+    margin-bottom: 0.1rem;
 }
 
-#list .card-karyawan p {
-    color: #475569;
-    /* slate-600 */
-    font-size: 0.85rem;
+#list .card-karyawan .meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    /* slate-500 */
 }
 
-#list .badge-status {
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
+/* ================================
+   BADGE STATUS (DESKTOP + MOBILE)
+   ================================ */
 
-/* Base styling */
 .badge-status {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 0.70rem;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-    border: none;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-}
-
-/* Status = TETAP */
-.badge-status.tetap {
-    background: #1d4ed8;
-    /* Biru */
-    color: #ffffff;
-}
-
-/* Status = KONTRAK */
-.badge-status.kontrak {
-    background: #16a34a;
-    /* Hijau */
-    color: #ffffff;
-}
-
-/* Status = MAGANG */
-.badge-status.magang {
-    background: #dc2626;
-    /* Merah */
-    color: #ffffff;
-}
-
-/* Status = RESIGN */
-.badge-status.resign {
-    background: #6b7280;
-    /* Abu-abu */
-    color: #ffffff;
-}
-
-/* Badge status karyawan (desktop + mobile sama) */
-.badge-status {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: 3px 8px;
     border-radius: 999px;
     font-size: 0.70rem;
@@ -274,38 +177,37 @@ canvas {
     text-transform: uppercase;
     border: none;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+    line-height: 1.1;
 }
 
-/* Status = TETAP */
+/* Status = TETAP (Biru) */
 .badge-status.tetap {
-    background: #1d4ed8;
-    /* Biru */
+    background-color: #1d4ed8;
     color: #ffffff;
 }
 
-/* Status = KONTRAK */
+/* Status = KONTRAK (Hijau) */
 .badge-status.kontrak {
-    background: #16a34a;
-    /* Hijau */
+    background-color: #16a34a;
     color: #ffffff;
 }
 
-/* Status = MAGANG */
+/* Status = MAGANG (Merah) */
 .badge-status.magang {
-    background: #dc2626;
-    /* Merah */
+    background-color: #dc2626;
     color: #ffffff;
 }
 
-/* Status = RESIGN */
+/* Status = RESIGN (Abu-abu) */
 .badge-status.resign {
-    background: #6b7280;
-    /* Abu-abu */
+    background-color: #6b7280;
     color: #ffffff;
 }
 
+/* ================================
+   FACE STATUS PILL
+   ================================ */
 
-/* Face status pill (mobile + bisa dipakai di desktop kalau mau) */
 .face-pill {
     display: inline-flex;
     align-items: center;
