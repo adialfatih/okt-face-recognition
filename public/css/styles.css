@@ -288,3 +288,133 @@ canvas {
         transform: translateY(0);
     }
 }
+
+.dataTables_length label,
+.dataTables_length select {
+    color: #0f172a !important;
+    /* slate-900 */
+    font-size: 13px !important;
+}
+
+.dataTables_length select {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    /* slate-300 */
+    border-radius: 6px !important;
+    padding: 4px 6px !important;
+}
+
+/* Search bar (meskipun searching disabled, tapi untuk jaga-jaga) */
+.dataTables_filter label,
+.dataTables_filter input {
+    color: #0f172a !important;
+}
+
+.dataTables_filter input {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 4px 6px !important;
+}
+
+/* Info text (Showing 1 to 10 of ...) */
+.dataTables_info {
+    color: #334155 !important;
+    /* slate-700 */
+    font-size: 12px !important;
+    padding-top: 10px !important;
+}
+
+/* Pagination wrapper */
+.dataTables_paginate {
+    margin-top: 8px !important;
+}
+
+/* Pagination buttons */
+.dataTables_paginate .paginate_button {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 4px 10px !important;
+    margin: 2px !important;
+    color: #0f172a !important;
+    font-size: 12px !important;
+}
+
+.dataTables_paginate .paginate_button:hover {
+    background: #e0f2fe !important;
+    /* sky-100 */
+    color: #0369a1 !important;
+    /* sky-700 */
+}
+
+/* Active page button */
+.dataTables_paginate .paginate_button.current {
+    background: #0369a1 !important;
+    /* sky-700 */
+    color: white !important;
+    border-color: #0369a1 !important;
+}
+
+.dataTables_paginate .paginate_button.current:hover {
+    background: #075985 !important;
+    /* sky-800 */
+}
+
+/* Table header */
+#tblAbsensi thead th {
+    background: #f0f9ff !important;
+    /* sky-50 */
+    color: #0f172a !important;
+    /* slate-900 */
+    border-bottom: 1px solid #bae6fd !important;
+    /* sky-200 */
+}
+
+/* Table body */
+#tblAbsensi tbody td {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border-color: #e2e8f0 !important;
+    /* slate-200 */
+}
+
+#tblAbsensi tbody tr:hover td {
+    background: #e0f2fe !important;
+    /* sky-100 */
+}
+
+.card.bg-sky-50\/80 {
+    backdrop-filter: blur(2px);
+}
+
+.card.bg-sky-50\/80 .text-slate-700,
+.card.bg-sky-50\/80 label {
+    color: #0f172a;
+    /* slate-900 */
+}
+
+.card.bg-sky-50\/80 .input,
+.card.bg-sky-50\/80 .select {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    /* slate-300 */
+    color: #0f172a !important;
+    font-size: 13px;
+}
+
+/* DataTables wrapper full light */
+div.dataTables_wrapper {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    padding-top: 4px;
+}
+
+/* Length + info + paginate sudah kita override sebelumnya,
+   tapi kita pertegas sedikit: */
+.dataTables_length,
+.dataTables_filter,
+.dataTables_info,
+.dataTables_paginate {
+    color: #0f172a !important;
+}

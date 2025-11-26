@@ -1,0 +1,249 @@
+<% layout('layout') -%>
+
+
+    <section class="space-y-4 -mx-3 sm:-mx-6">
+        <!-- Header -->
+        <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-sky-600 text-white p-5 shadow-lg">
+            <h1 class="text-xl sm:text-2xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>Laporan Absensi</span>
+            </h1>
+            <p class="text-xs sm:text-sm opacity-90 mt-1">
+                Pantau kehadiran karyawan berdasarkan departemen, divisi, jabatan, kategori, dan rentang tanggal.
+            </p>
+        </div>
+
+        <!-- Filter Card -->
+        <div class="card bg-sky-50/80 shadow-sm border border-sky-100 w-full">
+            <div class="card-body space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <h2 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-filter text-sky-600"></i>
+                        Filter Data
+                    </h2>
+                    <button id="btnResetFilter" class="btn btn-ghost btn-xs text-slate-500">
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Reset
+                    </button>
+                </div>
+
+                <form id="filterForm" class="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+                    <!-- Tanggal -->
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Tanggal dari</label>
+                        <input type="date" id="fltTglFrom" name="tgl_from"
+                            class="input input-sm input-bordered w-full" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Tanggal s/d</label>
+                        <input type="date" id="fltTglTo" name="tgl_to" class="input input-sm input-bordered w-full" />
+                    </div>
+
+                    <!-- Nama / NRP -->
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Nama</label>
+                        <input type="text" id="fltNama" name="nama" placeholder="Cari nama..."
+                            class="input input-sm input-bordered w-full" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">NRP</label>
+                        <input type="text" id="fltNrp" name="nrp" placeholder="Cari NRP..."
+                            class="input input-sm input-bordered w-full" />
+                    </div>
+
+                    <!-- Dep / Divisi / Jabatan -->
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Departement</label>
+                        <!-- <input type="text" id="fltDep" name="dep" placeholder="SPINNING / WEAVING ..."
+                            class="input input-sm input-bordered w-full" /> -->
+                        <select id="fltDep" name="dep" class="select select-sm select-bordered w-full">
+                            <option value="">Semua</option>
+                            <option value="Spinning">Spinning</option>
+                            <option value="Weaving">Weaving</option>
+
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Divisi</label>
+                        <input type="text" id="fltDivisi" name="divisi" placeholder="Divisi..."
+                            class="input input-sm input-bordered w-full" />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Jabatan</label>
+                        <input type="text" id="fltJabatan" name="jabatan" placeholder="Jabatan..."
+                            class="input input-sm input-bordered w-full" />
+                    </div>
+
+                    <!-- Kategori -->
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-600 font-medium">Kategori Absen</label>
+                        <select id="fltKategori" name="kategori" class="select select-sm select-bordered w-full">
+                            <option value="">Semua</option>
+                            <option>Masuk Shift Pagi</option>
+                            <option>Keluar Shift Pagi</option>
+                            <option>Masuk Shift Siang</option>
+                            <option>Keluar Shift Siang</option>
+                            <option>Masuk Shift Malam</option>
+                            <option>Keluar Shift Malam</option>
+                            <option>Masuk DS</option>
+                            <option>Keluar DS</option>
+                            <option>Masuk Driver</option>
+                            <option>Keluar Driver</option>
+                            <option>Masuk Security</option>
+                            <option>Keluar Security</option>
+                            <option>Masuk Terlambat</option>
+                            <option>Ijin Keluar</option>
+
+                        </select>
+                    </div>
+                </form>
+
+                <div class="flex justify-end pt-1">
+                    <button id="btnApplyFilter" class="btn btn-sm btn-primary flex items-center gap-2">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <span>Terapkan Filter</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabel Card -->
+        <div class="card bg-white shadow-md border border-sky-100">
+            <div class="card-body space-y-3">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-table text-sky-600"></i>
+                        <span>Data Absensi</span>
+                    </h2>
+                    <span id="absensiCount" class="text-[11px] text-slate-500">
+                        Menampilkan 0 baris
+                    </span>
+                </div>
+
+                <div class="overflow-x-auto rounded-xl border border-sky-50">
+                    <table id="tblAbsensi" class="table table-zebra table-sm table-karyawan">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>NRP</th>
+                                <th>Nama</th>
+                                <th>Departement</th>
+                                <th>Divisi</th>
+                                <th>Jabatan</th>
+                                <th>Kategori</th>
+                                <th>Jam Masuk</th>
+                                <th>Jam Keluar</th>
+                                <th>Durasi</th>
+                                <th>Terlambat</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="absensiBody">
+                            <tr>
+                                <td colspan="12" class="text-center text-xs text-slate-400 py-4">
+                                    Memuat data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="text-[11px] text-slate-400">
+                    Durasi dihitung dari pasangan kategori <span class="font-semibold">Masuk</span> dan <span
+                        class="font-semibold">Keluar</span>
+                    pada tanggal yang sama untuk NRP yang sama.
+                </p>
+            </div>
+        </div>
+    </section>
+    <!-- Modal Detil Absensi -->
+    <dialog id="modalDetailAbsensi" class="modal">
+        <div class="modal-box max-w-3xl bg-white">
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3">✕</button>
+            </form>
+
+            <h3 class="font-bold text-lg mb-3 flex items-center gap-2 text-slate-800">
+                <i class="fa-solid fa-id-card-clip text-sky-600"></i>
+                Detil Absensi
+            </h3>
+
+            <div id="detailContent" class="grid gap-4 md:grid-cols-[1.4fr_minmax(0,1fr)] items-start">
+                <!-- INFO -->
+                <div class="space-y-2 text-sm text-slate-700">
+                    <div>
+                        <div class="text-xs text-slate-500">Nama / NRP</div>
+                        <div class="font-semibold" id="detNama"></div>
+                        <div class="text-xs text-slate-500" id="detNrp"></div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <div class="text-slate-500">Tanggal</div>
+                            <div id="detTanggal" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Kategori</div>
+                            <div id="detKategori" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Jam Masuk</div>
+                            <div id="detJamMasuk" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Jam Keluar</div>
+                            <div id="detJamKeluar" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Shift Code</div>
+                            <div id="detShift" class="font-medium"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <div class="text-slate-500">Departement</div>
+                            <div id="detDep" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Divisi</div>
+                            <div id="detDivisi" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Jabatan</div>
+                            <div id="detJabatan" class="font-medium"></div>
+                        </div>
+                        <div>
+                            <div class="text-slate-500">Terlambat</div>
+                            <div id="detLate" class="font-medium"></div>
+                        </div>
+                    </div>
+
+                    <div class="text-xs text-slate-500 mt-2">
+                        Dibuat pada: <span id="detCreatedAt" class="font-medium text-slate-700"></span>
+                    </div>
+                </div>
+
+                <!-- FOTO -->
+                <div class="flex flex-col items-center gap-2">
+                    <div
+                        class="w-40 h-40 rounded-2xl overflow-hidden border border-sky-100 bg-slate-100 flex items-center justify-center">
+                        <img id="detPhoto" src="" alt="Snapshot Absensi"
+                            class="max-w-full max-h-full object-cover hidden" />
+                        <span id="detNoPhoto" class="text-[11px] text-slate-400 text-center px-2">
+                            Tidak ada foto tersimpan
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 text-center">
+                        Foto diambil saat absensi menggunakan Face Recognition.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- jQuery & DataTables (light) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
+
+    <script defer src="/public/js/laporan-absensi.js"></script>

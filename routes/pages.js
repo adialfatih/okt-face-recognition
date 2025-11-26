@@ -23,7 +23,7 @@ router.get('/test/capture', (req, res) => res.render('test-capture'));
 router.get('/karyawan', (req, res) => res.render('karyawan', { title: 'Data Karyawan' }));
 router.get('/cuti', (req, res) => res.render('placeholder', { title: 'Cuti' }));
 router.get('/ijin', (req, res) => res.render('placeholder', { title: 'Ijin' }));
-router.get('/laporan', (req, res) => res.render('placeholder', { title: 'Laporan' }));
+router.get('/laporan', (req, res) => res.render('laporan-absensi', { title: 'Laporan Absensi' }));
 router.get('/about', (req, res) => res.render('about'));
 
 

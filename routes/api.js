@@ -66,6 +66,21 @@ async function getProfilUI(nrp) {
     if (!c) return null;
     return mapCacheToUI(c); // {nrp,nama,dep,divisi,jabatan,status}
 }
+function deriveShiftCode(kategori) {
+    if (!kategori) return null;
+    const k = kategori.toLowerCase();
+
+    if (k.includes('shift pagi')) return 'PAGI';
+    if (k.includes('shift siang')) return 'SIANG';
+    if (k.includes('shift malam')) return 'MALAM';
+    if (k.includes('ds')) return 'DS';
+    if (k.includes('driver')) return 'DRIVER';
+    if (k.includes('security')) return 'SECURITY';
+    if (k.includes('terlambat')) return 'TERLAMBAT';
+    if (k.includes('ijin keluar')) return 'IJIN';
+
+    return null;
+}
 
 function computeLateFlag(kategori, now) {
     // Telat hanya untuk Masuk Shift Pagi/Siang/Malam, grace 5 menit
@@ -359,28 +374,32 @@ router.post('/absen', async (req, res) => {
 
         const late = computeLateFlag(kategori, nowObj.now);
         const lateMin = computeLateMinutes(kategori, nowObj.now);
+        const shiftCode = deriveShiftCode(kategori);
 
+        // Anti-dobel (nrp, tanggal, kategori)
         // Anti-dobel (nrp, tanggal, kategori)
         try {
             await q(
                 `
         INSERT INTO table_absensi
-          (nrp, tanggal, jam, kategori,
+          (nrp, tanggal, jam, kategori, shift_code,
            nama_snapshot, dep_snapshot, divisi_snapshot, jabatan_snapshot,
-           is_late, menit_terlambat)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
+           is_late, menit_terlambat, snapshot_base64)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
       `,
                 [
                     best.nrp,
                     nowObj.tanggal,
                     nowObj.jam,
                     kategori,
+                    shiftCode,
                     info.nama,
                     info.dep,
                     info.divisi,
                     info.jabatan,
                     late,
-                    lateMin
+                    lateMin,
+                    frameBase64 || null
                 ]
             );
         } catch (e) {
@@ -389,9 +408,10 @@ router.post('/absen', async (req, res) => {
                 ok: false,
                 reason: 'duplicate',
                 kategori,
-                match: { ...best, ...info } // pakai info dari cache
+                match: { ...best, ...info }
             });
         }
+
 
         // Log deteksi sukses
         await q(
@@ -559,6 +579,348 @@ router.post('/cache/sync-now', async (req, res) => {
         res.json({ ok: true, ...r });
     } catch (e) {
         console.error(e); res.status(500).json({ error: 'sync failed' });
+    }
+});
+
+// GET /api/absensi?dep=&divisi=&jabatan=&nama=&nrp=&kategori=&tgl_from=&tgl_to=
+// router.get('/absensi', async (req, res) => {
+//     try {
+//         const {
+//             dep = '',
+//             divisi = '',
+//             jabatan = '',
+//             nama = '',
+//             nrp = '',
+//             kategori = '',
+//             tgl_from = '',
+//             tgl_to = ''
+//         } = req.query || {};
+
+//         const where = [];
+//         const params = [];
+
+//         // Hanya ambil baris "Masuk ..."
+//         where.push("a.kategori LIKE 'Masuk %'");
+
+//         if (nrp.trim()) {
+//             where.push('a.nrp LIKE ?');
+//             params.push('%' + nrp.trim() + '%');
+//         }
+//         if (nama.trim()) {
+//             where.push('a.nama_snapshot LIKE ?');
+//             params.push('%' + nama.trim() + '%');
+//         }
+//         if (dep.trim()) {
+//             where.push('a.dep_snapshot LIKE ?');
+//             params.push('%' + dep.trim() + '%');
+//         }
+//         if (divisi.trim()) {
+//             where.push('a.divisi_snapshot LIKE ?');
+//             params.push('%' + divisi.trim() + '%');
+//         }
+//         if (jabatan.trim()) {
+//             where.push('a.jabatan_snapshot LIKE ?');
+//             params.push('%' + jabatan.trim() + '%');
+//         }
+//         if (kategori.trim()) {
+//             where.push('a.kategori = ?');
+//             params.push(kategori.trim());
+//         }
+//         if (tgl_from.trim()) {
+//             where.push('a.tanggal >= ?');
+//             params.push(tgl_from.trim());
+//         }
+//         if (tgl_to.trim()) {
+//             where.push('a.tanggal <= ?');
+//             params.push(tgl_to.trim());
+//         }
+
+//         const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+//         const rows = await q(`
+//             SELECT
+//                 a.id,
+//                 a.nrp,
+//                 a.tanggal,
+//                 a.jam AS jam_masuk,
+//                 b.jam AS jam_keluar,
+//                 a.kategori AS kategori_masuk,
+//                 b.kategori AS kategori_keluar,
+//                 a.nama_snapshot AS nama,
+//                 a.dep_snapshot AS dep,
+//                 a.divisi_snapshot AS divisi,
+//                 a.jabatan_snapshot AS jabatan,
+//                 a.is_late,
+//                 a.menit_terlambat,
+//                 CASE 
+//                     WHEN b.jam IS NOT NULL THEN
+//                         TIMESTAMPDIFF(
+//                             MINUTE,
+//                             CONCAT(a.tanggal, ' ', a.jam),
+//                             CONCAT(a.tanggal, ' ', b.jam)
+//                         )
+//                     ELSE NULL
+//                 END AS durasi_menit
+//             FROM table_absensi a
+//             LEFT JOIN table_absensi b
+//                 ON b.nrp = a.nrp
+//                 AND b.tanggal = a.tanggal
+//                 AND b.kategori = REPLACE(a.kategori, 'Masuk ', 'Keluar ')
+//             ${whereSql}
+//             ORDER BY a.tanggal DESC, a.jam ASC
+//             LIMIT 500
+//         `, params);
+
+//         res.json({ rows });
+//     } catch (e) {
+//         console.error('[api/absensi] fail:', e);
+//         res.status(500).json({ error: 'failed' });
+//     }
+// });
+router.get('/absensi/report', async (req, res) => {
+    try {
+        const {
+            tgl_from,
+            tgl_to,
+            nrp,
+            nama,
+            dep,
+            divisi,
+            jabatan,
+            kategori
+        } = req.query || {};
+
+        const whereMasuk = [];
+        const paramsMasuk = [];
+
+        // Hanya ambil baris "Masuk ..."
+        whereMasuk.push(`a.kategori LIKE 'Masuk%'`);
+
+        // Filter tanggal
+        if (tgl_from) {
+            whereMasuk.push(`a.tanggal >= ?`);
+            paramsMasuk.push(tgl_from);
+        }
+        if (tgl_to) {
+            whereMasuk.push(`a.tanggal <= ?`);
+            paramsMasuk.push(tgl_to);
+        }
+
+        // Filter NRP
+        if (nrp) {
+            whereMasuk.push(`a.nrp LIKE ?`);
+            paramsMasuk.push(`%${nrp}%`);
+        }
+
+        // Filter nama (snapshot)
+        if (nama) {
+            whereMasuk.push(`a.nama_snapshot LIKE ?`);
+            paramsMasuk.push(`%${nama}%`);
+        }
+
+        // Filter dep / divisi / jabatan (snapshot)
+        if (dep) {
+            whereMasuk.push(`a.dep_snapshot LIKE ?`);
+            paramsMasuk.push(`%${dep}%`);
+        }
+        if (divisi) {
+            whereMasuk.push(`a.divisi_snapshot LIKE ?`);
+            paramsMasuk.push(`%${divisi}%`);
+        }
+        if (jabatan) {
+            whereMasuk.push(`a.jabatan_snapshot LIKE ?`);
+            paramsMasuk.push(`%${jabatan}%`);
+        }
+
+        // Filter kategori spesifik (mis. hanya Masuk Shift Pagi)
+        if (kategori) {
+            whereMasuk.push(`a.kategori = ?`);
+            paramsMasuk.push(kategori);
+        }
+
+        const whereSql = whereMasuk.length ? `WHERE ${whereMasuk.join(' AND ')}` : '';
+
+        // Pairing: a = Masuk, b = Keluar (shift_code sama & tanggal sama & nrp sama)
+        const sql = `
+            SELECT
+                a.id              AS id_masuk,
+                b.id              AS id_keluar,
+                a.nrp,
+                a.tanggal,
+                a.jam             AS jam_masuk,
+                b.jam             AS jam_keluar,
+                a.kategori        AS kategori_masuk,
+                b.kategori        AS kategori_keluar,
+                a.shift_code,
+                a.nama_snapshot,
+                a.dep_snapshot,
+                a.divisi_snapshot,
+                a.jabatan_snapshot,
+                a.is_late,
+                a.menit_terlambat,
+                -- durasi dalam menit (boleh NULL kalau jam_keluar belum ada)
+                CASE 
+                    WHEN b.id IS NOT NULL THEN TIMESTAMPDIFF(
+                        MINUTE,
+                        STR_TO_DATE(CONCAT(a.tanggal, ' ', a.jam), '%Y-%m-%d %H:%i:%s'),
+                        STR_TO_DATE(CONCAT(b.tanggal, ' ', b.jam), '%Y-%m-%d %H:%i:%s')
+                    )
+                    ELSE NULL
+                END AS durasi_menit
+            FROM table_absensi a
+            LEFT JOIN table_absensi b
+                ON  b.nrp = a.nrp
+                AND b.tanggal = a.tanggal
+                AND (
+                        (a.shift_code IS NOT NULL AND b.shift_code IS NOT NULL AND b.shift_code = a.shift_code)
+                     OR (a.shift_code IS NULL AND b.shift_code IS NULL AND b.kategori LIKE 'Keluar%')
+                )
+                AND b.kategori LIKE 'Keluar%'
+            ${whereSql}
+            ORDER BY a.tanggal DESC, a.jam ASC
+            LIMIT 1000
+        `;
+
+        const rows = await q(sql, paramsMasuk);
+        res.json({ ok: true, rows });
+    } catch (e) {
+        console.error('[absensi/report] fail:', e);
+        res.status(500).json({ ok: false, error: 'report-failed' });
+    }
+});
+// GET /api/absensi/:id  → detil 1 baris absensi (untuk modal)
+// GET /api/absensi/:id  → detil 1 baris absensi + pasangan masuk/keluar
+router.get('/absensi/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id || '0', 10);
+        if (!id) return res.status(400).json({ ok: false, error: 'invalid-id' });
+
+        const rows = await q(
+            `SELECT 
+                id,
+                nrp,
+                tanggal,
+                jam,
+                kategori,
+                shift_code,
+                nama_snapshot,
+                dep_snapshot,
+                divisi_snapshot,
+                jabatan_snapshot,
+                is_late,
+                menit_terlambat,
+                snapshot_base64,
+                created_at
+            FROM table_absensi
+            WHERE id = ?
+            LIMIT 1`,
+            [id]
+        );
+
+        if (!rows.length) {
+            return res.status(404).json({ ok: false, error: 'not-found' });
+        }
+
+        const r = rows[0];
+        const shiftCode = r.shift_code || deriveShiftCode(r.kategori || '');
+        let jamMasuk = null;
+        let jamKeluar = null;
+
+        // Helper map kategori pasangan (fallback kalau shift_code belum ada)
+        function pasanganKeluar(katMasuk) {
+            if (!katMasuk) return null;
+            if (katMasuk.includes('Shift Pagi')) return 'Keluar Shift Pagi';
+            if (katMasuk.includes('Shift Siang')) return 'Keluar Shift Siang';
+            if (katMasuk.includes('Shift Malam')) return 'Keluar Shift Malam';
+            if (katMasuk.includes('DS')) return 'Keluar DS';
+            if (katMasuk.includes('Driver')) return 'Keluar Driver';
+            if (katMasuk.includes('Security')) return 'Keluar Security';
+            return null;
+        }
+        function pasanganMasuk(katKeluar) {
+            if (!katKeluar) return null;
+            if (katKeluar.includes('Shift Pagi')) return 'Masuk Shift Pagi';
+            if (katKeluar.includes('Shift Siang')) return 'Masuk Shift Siang';
+            if (katKeluar.includes('Shift Malam')) return 'Masuk Shift Malam';
+            if (katKeluar.includes('DS')) return 'Masuk DS';
+            if (katKeluar.includes('Driver')) return 'Masuk Driver';
+            if (katKeluar.includes('Security')) return 'Masuk Security';
+            return null;
+        }
+
+        if ((r.kategori || '').startsWith('Masuk')) {
+            jamMasuk = r.jam;
+
+            // Cari pasangan Keluar
+            let pair;
+            if (shiftCode) {
+                const p = await q(
+                    `SELECT id, jam, kategori FROM table_absensi
+                     WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Keluar%'
+                     ORDER BY jam ASC
+                     LIMIT 1`,
+                    [r.nrp, r.tanggal, shiftCode]
+                );
+                pair = p[0];
+            } else {
+                const katKeluar = pasanganKeluar(r.kategori);
+                if (katKeluar) {
+                    const p = await q(
+                        `SELECT id, jam, kategori FROM table_absensi
+                         WHERE nrp=? AND tanggal=? AND kategori=?
+                         ORDER BY jam ASC
+                         LIMIT 1`,
+                        [r.nrp, r.tanggal, katKeluar]
+                    );
+                    pair = p[0];
+                }
+            }
+            if (pair) jamKeluar = pair.jam;
+
+        } else if ((r.kategori || '').startsWith('Keluar')) {
+            jamKeluar = r.jam;
+
+            // Cari pasangan Masuk
+            let pair;
+            if (shiftCode) {
+                const p = await q(
+                    `SELECT id, jam, kategori FROM table_absensi
+                     WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Masuk%'
+                     ORDER BY jam ASC
+                     LIMIT 1`,
+                    [r.nrp, r.tanggal, shiftCode]
+                );
+                pair = p[0];
+            } else {
+                const katMasuk = pasanganMasuk(r.kategori);
+                if (katMasuk) {
+                    const p = await q(
+                        `SELECT id, jam, kategori FROM table_absensi
+                         WHERE nrp=? AND tanggal=? AND kategori=?
+                         ORDER BY jam ASC
+                         LIMIT 1`,
+                        [r.nrp, r.tanggal, katMasuk]
+                    );
+                    pair = p[0];
+                }
+            }
+            if (pair) jamMasuk = pair.jam;
+        } else {
+            // kategori lain (Masuk Terlambat, Ijin Keluar, dll)
+            jamMasuk = r.jam;
+        }
+
+        res.json({
+            ok: true,
+            data: {
+                ...r,
+                jam_masuk: jamMasuk,
+                jam_keluar: jamKeluar
+            }
+        });
+    } catch (e) {
+        console.error('[absensi/:id] fail:', e);
+        res.status(500).json({ ok: false, error: 'detail-failed' });
     }
 });
 
