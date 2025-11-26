@@ -23,6 +23,9 @@ const router = express.Router();
 const { mapCacheToUI, ensureInCache, fullSyncFromHR, invalidateNRP, ACTIVE_STATUSES } = require('../services/karyawanCache');
 
 const FACE_THRESHOLD = Number(process.env.FACE_DISTANCE_THRESHOLD || 0.5);
+// Minimum selisih jarak antara kandidat terbaik dan kedua terbaik
+const FACE_MARGIN_MIN = Number(process.env.FACE_MARGIN_MIN || 0.08);
+
 // ==== Embedding Cache (supaya match cepat untuk 1000+ karyawan) ====
 let EMB_CACHE = []; // [{ nrp, emb: Float32Array }]
 let EMB_READY = false;
@@ -143,28 +146,60 @@ router.get('/karyawan/search', async (req, res) => {
 router.post('/match', async (req, res) => {
     try {
         const { descriptors } = req.body; // [[128 floats], ...]
-        if (!Array.isArray(descriptors) || descriptors.length === 0) return res.status(400).json({ error: 'No descriptors' });
+        if (!Array.isArray(descriptors) || descriptors.length === 0) {
+            return res.status(400).json({ error: 'No descriptors' });
+        }
 
         await ensureEmbeddings();
-        let best = { nrp: null, dist: 9e9 };
+
+        // 1) Ambil jarak terbaik per NRP
+        const bestByNRP = new Map(); // nrp -> dist
         for (const e of EMB_CACHE) {
             for (const d of descriptors) {
                 const dist = euclideanDistance(e.emb, d);
-                if (dist < best.dist) best = { nrp: e.nrp, dist };
+                const prev = bestByNRP.get(e.nrp);
+                if (prev === undefined || dist < prev) {
+                    bestByNRP.set(e.nrp, dist);
+                }
             }
         }
-        if (best.dist <= FACE_THRESHOLD) {
-            //const [info] = await q('SELECT nrp, nama, dep, divisi, jabatan FROM table_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
-            // const [info] = await hrQ('SELECT nrp, nama, departement AS dep, divisi, jabatan FROM data_karyawan WHERE nrp=? LIMIT 1', [best.nrp]);
-            // return res.json({ match: { ...best, ...info } });
-            const info = await getProfilUI(best.nrp);
-            return res.json({ match: { ...best, ...info } });
+
+        // 2) Tentukan best dan second-best dari semua NRP
+        let best = { nrp: null, dist: 9e9 };
+        let second = { nrp: null, dist: 9e9 };
+        for (const [nrp, dist] of bestByNRP.entries()) {
+            if (dist < best.dist) {
+                second = best;
+                best = { nrp, dist };
+            } else if (dist < second.dist) {
+                second = { nrp, dist };
+            }
         }
-        res.json({ match: null, bestDist: best.dist });
+
+        // 3) Kalau tidak ada kandidat atau di atas threshold → tidak match
+        if (!best.nrp || best.dist > FACE_THRESHOLD) {
+            return res.json({ match: null, bestDist: best.dist });
+        }
+
+        // 4) Kalau selisih dengan kandidat kedua terlalu kecil → ambiguous → anggap tidak match
+        if (second.nrp && (second.dist - best.dist) < FACE_MARGIN_MIN) {
+            // Bisa juga dikembalikan reason khusus kalau mau dihandle di frontend:
+            // return res.json({ match: null, reason: 'ambiguous', bestDist: best.dist, secondDist: second.dist });
+            return res.json({ match: null, bestDist: best.dist, secondDist: second.dist });
+        }
+
+        // 5) Lolos threshold dan margin → ini match yang kita percaya
+        const info = await getProfilUI(best.nrp);
+        if (!info) {
+            return res.json({ match: null, bestDist: best.dist });
+        }
+        return res.json({ match: { ...best, ...info } });
     } catch (e) {
-        console.error(e); res.status(500).json({ error: 'match failed' });
+        console.error(e);
+        res.status(500).json({ error: 'match failed' });
     }
 });
+
 
 
 
@@ -255,15 +290,32 @@ router.post('/absen', async (req, res) => {
 
         // Cari match terbaik
         await ensureEmbeddings();
-        let best = { nrp: null, dist: 9e9 };
+
+        // 1) Ambil jarak terbaik per NRP
+        const bestByNRP = new Map(); // nrp -> dist
         for (const e of EMB_CACHE) {
             for (const d of descriptors) {
                 const dist = euclideanDistance(e.emb, d);
-                if (dist < best.dist) best = { nrp: e.nrp, dist };
+                const prev = bestByNRP.get(e.nrp);
+                if (prev === undefined || dist < prev) {
+                    bestByNRP.set(e.nrp, dist);
+                }
             }
         }
 
-        // Jika tidak ketemu / di atas threshold -> log unknown
+        // 2) Tentukan best dan second-best dari semua NRP
+        let best = { nrp: null, dist: 9e9 };
+        let second = { nrp: null, dist: 9e9 };
+        for (const [nrp, dist] of bestByNRP.entries()) {
+            if (dist < best.dist) {
+                second = best;
+                best = { nrp, dist };
+            } else if (dist < second.dist) {
+                second = { nrp, dist };
+            }
+        }
+
+        // 3) Jika tidak ada kandidat atau di atas threshold → unknown
         if (!best.nrp || best.dist > FACE_THRESHOLD) {
             await q(
                 'INSERT INTO table_deteksi_log (context, kategori, status, distance, frame_snapshot) VALUES (?,?,?,?,?)',
@@ -276,6 +328,24 @@ router.post('/absen', async (req, res) => {
                 ]
             );
             return res.json({ ok: false, reason: 'unknown' });
+        }
+
+        // 4) Jika selisih best vs second terlalu kecil → ambiguous (jangan catat absensi)
+        if (second.nrp && (second.dist - best.dist) < FACE_MARGIN_MIN) {
+            await q(
+                'INSERT INTO table_deteksi_log (context, kategori, status, distance, frame_snapshot) VALUES (?,?,?,?,?)',
+                [
+                    'absensi',
+                    kategori,
+                    'ambiguous',
+                    best.dist,
+                    frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
+                ]
+            );
+            return res.json({
+                ok: false,
+                reason: 'ambiguous'
+            });
         }
 
         // Ambil profil dari cache (HR)

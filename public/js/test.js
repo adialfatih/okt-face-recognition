@@ -4,7 +4,8 @@
     //const info = document.getElementById('info');
     const infoCard = document.getElementById('infoCard');
     const btnSwitch = document.getElementById('btnSwitchCam');
-
+    const sndOk = new Audio('/public/ping.mp3');
+    const sndErr = new Audio('/public/error.mp3');
     await FaceCommon.loadModels();
     await FaceCommon.startCamera(video);
     //setTimeout(() => FaceCommon.resizeCanvasToVideo(video, overlay), 200);
@@ -26,28 +27,6 @@
     }
 
     async function loop() {
-        //const dets = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-        //.withFaceLandmarks().withFaceDescriptors();
-        // const dets = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-        //     .withFaceLandmarks().withFaceDescriptors();
-        // const dets = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-        //     .withFaceLandmarks().withFaceDescriptors();
-        //FaceCommon.drawDetections(overlay, dets);
-        // FaceCommon.drawWithResize(video, overlay, dets);
-        // if (dets.length === 1) {
-        //     const desc = Array.from(dets[0].descriptor);
-        //     const r = await fetch('/api/match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ descriptors: [desc] }) }).then(r => r.json());
-        //     if (r.match) {
-        //         const m = r.match;
-        //         info.innerHTML = `<div class="badge badge-success">${m.nrp} - ${m.nama} • ${m.dep}/${m.divisi} • ${m.jabatan}</div>`;
-        //     } else {
-        //         info.innerHTML = `<div class="badge badge-error">Wajah tidak terdeteksi dalam database</div>`;
-        //     }
-        // } else if (dets.length === 0) {
-        //     info.innerHTML = `<div class="badge">Arahkan wajah ke kamera</div>`;
-        // } else {
-        //     info.innerHTML = `<div class="badge badge-warning">Hanya 1 wajah</div>`;
-        // }
         const dets = await faceapi
             .detectAllFaces(video, DET_OPTS)
             .withFaceLandmarks()
@@ -87,12 +66,21 @@
       </div>
     </div>
         `;
+                try {
+                    sndOk.currentTime = 0;   // mulai lagi dari awal
+                    sndOk.play();
+                } catch (e) { }
+                //UI.speak(`Wajah ${m.nama} terdeteksi`);
             } else {
                 infoCard.innerHTML = `
 <div class="bg-error/80 text-error-content backdrop-blur-sm rounded-box p-2 sm:p-3 text-xs sm:text-sm shadow-md">
 ⛔ Wajah tidak terdeteksi dalam database
 </div>
         `;
+                try {
+                    sndErr.currentTime = 0;   // mulai lagi dari awal
+                    sndErr.play();
+                } catch (e) { }
             }
         } else {
             // 0 wajah atau >1 wajah → sembunyikan kartu biar tidak mengganggu

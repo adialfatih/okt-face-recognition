@@ -1,11 +1,29 @@
 (function () {
     const search = document.getElementById('search');
+    // function speak(text) {
+    //     try {
+    //         if (!('speechSynthesis' in window)) return;
+    //         const utter = new SpeechSynthesisUtterance(text);
+    //         utter.lang = 'id-ID';
+    //         utter.rate = 1;   // kecepatan normal
+    //         utter.pitch = 1;  // nada normal
+    //         window.speechSynthesis.cancel(); // batalkan antrian sebelumnya biar nggak numpuk
+    //         window.speechSynthesis.speak(utter);
+    //     } catch (e) {
+    //         console.warn('[tts] gagal memutar suara', e);
+    //     }
+    // }
+
+
     //const suggest = document.getElementById('suggest');
     const btn = document.getElementById('btnStart');
     const selectedInfo = document.getElementById('selectedInfo');
     const selectedText = document.getElementById('selectedText');
+    const sndOk = new Audio('/public/ping.mp3');
+    const sndErr = new Audio('/public/error.mp3');
     //const btnSwitch = document.getElementById('btnSwitchCam');
     let selected = null;
+
 
     if (search) {
         const ac = new autoComplete({
@@ -70,39 +88,7 @@
                 if (selectedText) selectedText.textContent = '';
             }
         });
-        // let t;
-        // search.addEventListener('input', async () => {
-        //     const q = search.value.trim();
-        //     if (q.length < 2) { suggest.classList.add('hidden'); suggest.innerHTML = ''; return; }
-        //     selected = null;
-        //     btn.classList.add('disabled');
-        //     btn.setAttribute('href', '#');
-        //     if (selectedInfo) { selectedInfo.classList.add('hidden'); }
-        //     if (selectedText) { selectedText.textContent = ''; }
-        //     clearTimeout(t); t = setTimeout(async () => {
-        //         const rows = await fetch('/api/karyawan/search?q=' + encodeURIComponent(q)).then(r => r.json());
-        //         suggest.innerHTML = rows.map(r => `<li><a data-nrp="${r.nrp}">${r.nrp} — ${r.nama}</a></li>`).join('');
-        //         suggest.classList.remove('hidden');
-        //     }, 200);
-        // });
-        // search.addEventListener('keydown', (e) => {
-        //     if (e.key === 'Enter') {
-        //         const first = suggest.querySelector('a[data-nrp]');
-        //         if (first) { e.preventDefault(); first.click(); }
-        //     }
-        // });
 
-        // suggest.addEventListener('click', (e) => {
-        //     const a = e.target.closest('a[data-nrp]'); if (!a) return;
-        //     const nrp = a.dataset.nrp;
-        //     const label = a.textContent.trim();
-        //     selected = { nrp, label };
-        //     if (selectedInfo) selectedInfo.classList.remove('hidden');
-        //     if (selectedText) selectedText.textContent = label;
-        //     btn.classList.remove('disabled');
-        //     btn.setAttribute('href', '/rekam/capture?nrp=' + encodeURIComponent(nrp));
-        //     suggest.classList.add('hidden');
-        // });
     }
     if (btn) {
         btn.addEventListener('click', (ev) => {
@@ -148,29 +134,14 @@
             //video.addEventListener('loadedmetadata', () => FaceCommon.resizeCanvasToVideo(video, overlay));
             //const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
             video.addEventListener('loadedmetadata', () => FaceCommon.resizeCanvasToVideo(video, overlay));
-            //const DET_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
 
-            //setTimeout(() => FaceCommon.resizeCanvasToVideo(video, overlay), 200);
-            // const doSync = () => FaceCommon.syncCanvasToDisplay(video, overlay);
-            // video.addEventListener('loadedmetadata', doSync);
-            // window.addEventListener('resize', doSync);
-            // setTimeout(doSync, 200);
             const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.5 });
             const doSync = () => FaceCommon.syncCanvasToDisplay(video, overlay);
             video.addEventListener('loadedmetadata', doSync);
             window.addEventListener('resize', doSync);
             setTimeout(doSync, 200);
 
-            // if (btnSwitch) {
-            //     btnSwitch.addEventListener('click', async () => {
-            //         const cams = await FaceCommon.listCameras();
-            //         const curId = video.srcObject?.getVideoTracks?.()[0]?.getSettings?.().deviceId;
-            //         let idx = Math.max(0, cams.findIndex(c => c.deviceId === curId));
-            //         idx = (idx + 1) % cams.length;
-            //         await FaceCommon.switchCamera(video, cams[idx].deviceId);
-            //         setTimeout(() => FaceCommon.resizeCanvasToVideo(video, overlay), 200);
-            //     });
-            // }
+
             if (btnSwitch) {
                 btnSwitch.addEventListener('click', async () => {
                     const cams = await FaceCommon.listCameras();
@@ -251,17 +222,17 @@
             let recording = false;
             let saving = false;
             let lastDet = 0; const DET_MS = 120;
+            // throttle pengambilan sampel (biar tidak terlalu rapat)
+            let lastSampleAt = 0;
+            const SAMPLE_MS = 600; // minimal 600ms antar sampel
+
+            // batas kualitas untuk rekam wajah
+            const MIN_DET_SCORE = 0.7; // confidence deteksi minimal
+            const MIN_FACE_REL_HEIGHT = 0.25; // min 25% tinggi frame
+            const MAX_FACE_REL_HEIGHT = 0.9;  // max 90% tinggi frame
+
             async function loop() {
                 try {
-                    // const dets = await faceapi
-                    //     .detectAllFaces(video, DET_OPTS)
-                    //     .withFaceLandmarks()
-                    //     .withFaceDescriptors();
-                    // const dets = await faceapi
-                    //     .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-                    //     .withFaceLandmarks()
-                    //     .withFaceDescriptors();
-                    //FaceCommon.drawDetections(overlay, dets);
                     const now = performance.now();
                     let dets = [];
                     if (now - lastDet >= DET_MS) {
@@ -273,13 +244,82 @@
                     }
                     FaceCommon.drawWithResize(video, overlay, dets);
                     //if (dets.length === 1 && saved < 15) {
-                    if (recording && dets.length === 1 && saved < 15) {
-                        const desc = dets[0].descriptor;
-                        const frame = FaceCommon.grabFrame(video);
-                        samples.push({ embedding: Array.from(desc), snapshotBase64: frame, mime: 'image/jpeg' });
-                        saved++; counter.textContent = `${saved} / 15`;
-                        UI.toastTop(`Sample ${saved} tersimpan`, 'success');
-                        //if (saved % 3 === 0 || saved === 15) UI.toastTop(`Sample ${saved} tersimpan`, 'success');
+                    // Ambil sampel hanya jika:
+                    // - sedang mode recording
+                    // - hanya 1 wajah di frame
+                    // - belum mencapai 15 sampel
+                    // - jeda minimal antar sampel terpenuhi
+                    if (recording && dets.length === 1 && saved < 15 && (now - lastSampleAt >= SAMPLE_MS)) {
+                        const det = dets[0];
+                        const score = det.detection?.score || 0;
+
+                        // 1) Tolak jika score deteksi terlalu rendah
+                        if (score < MIN_DET_SCORE) {
+                            // Optional: bisa kasih hint ringan, tapi jangan tiap frame biar nggak spam
+                            // UI.toastTop('Mendekat sedikit ke kamera', 'warning');
+                        } else {
+                            // 2) Cek ukuran wajah relatif terhadap frame (supaya tidak terlalu kecil/jauh)
+                            const box = det.detection.box;
+                            const frameW = overlay.width || video.videoWidth || 0;
+                            const frameH = overlay.height || video.videoHeight || 0;
+                            const relH = frameH ? (box.height / frameH) : 0;
+
+                            if (relH < MIN_FACE_REL_HEIGHT || relH > MAX_FACE_REL_HEIGHT) {
+                                // Wajah terlalu kecil / terlalu dekat --> skip
+                                // Optional: UI.toastTop('Posisikan wajah di tengah dan cukup dekat', 'warning');
+                            } else {
+                                // 3) (Opsional tapi sangat membantu) Cek apakah wajah ini milik
+                                //    karyawan lain yang sudah terekam, untuk mencegah salah orang.
+                                let bolehSimpan = true;
+                                try {
+                                    const descArr = Array.from(det.descriptor);
+                                    const matchResp = await fetch('/api/match', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ descriptors: [descArr] })
+                                    }).then(r => r.json());
+
+                                    if (matchResp?.match && matchResp.match.nrp && matchResp.match.nrp !== nrp) {
+                                        // Sistem mengenali wajah ini sebagai NRP lain → jangan simpan
+                                        bolehSimpan = false;
+                                        UI.toastTop(
+                                            `Terlihat wajah milik ${matchResp.match.nama || matchResp.match.nrp}, bukan NRP ${nrp}`,
+                                            'error'
+                                        );
+                                    }
+                                } catch (e) {
+                                    // Kalau /api/match error, tetap lanjut simpan supaya rekam tidak mogok
+                                    console.warn('[rekam] match check failed, lanjut tanpa verifikasi', e);
+                                }
+
+                                if (bolehSimpan) {
+                                    const frame = FaceCommon.grabFrame(video);
+                                    samples.push({
+                                        embedding: Array.from(det.descriptor),
+                                        snapshotBase64: frame,
+                                        mime: 'image/jpeg'
+                                    });
+
+                                    saved++;
+                                    lastSampleAt = now;
+
+                                    // Update counter & progress bar
+                                    counter.textContent = `${saved} / 15`;
+                                    const pb = document.getElementById('fakeProgressBar');
+                                    if (pb) {
+                                        pb.style.width = `${(saved / 15) * 100}%`;
+                                    }
+                                    //UI.speak(`Menyimpan sampel`);
+                                    try {
+                                        sndOk.currentTime = 0;   // mulai lagi dari awal
+                                        sndOk.play();
+                                    } catch (e) { }
+                                    UI.toastTop(`Sample ${saved} tersimpan`, 'success');
+                                }
+                            }
+                        }
+
+                        // jeda kecil supaya user punya waktu sedikit mengubah pose
                         await new Promise(r => setTimeout(r, 450));
                     }
                     if (recording && saved >= 15) {
@@ -301,7 +341,7 @@
                         UI.toastTop('Wajah sudah terekam. Silakan ulangi proses (reset & rekam ulang).', 'error');
                         return;
                     }
-                    if (resp.ok) { UI.toastTop(`Rekam selesai (${resp.saved})`, 'success'); }
+                    if (resp.ok) { UI.toastTop(`Rekam selesai (${resp.saved})`, 'success'); UI.speak("Rekaman selesai. Silakan tekan tombol simpan."); }
                     else { UI.toastTop('Gagal menyimpan', 'error'); }
 
                 }
