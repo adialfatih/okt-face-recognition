@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <%- include('partials/head') %>
+</head>
+
+<body class="min-h-screen font-[Inter] scroll-smooth bg-gradient-to-br from-sky-50 via-sky-100 to-white">
+
+    <div class="drawer lg:drawer-open">
+        <input id="drawer-menu" type="checkbox" class="drawer-toggle" />
+
+        <!-- MAIN CONTENT (FULL WIDTH + PADDING) -->
+        <div class="drawer-content min-h-screen flex flex-col">
+            <%- include('partials/nav') %>
+
+                <main class="px-3 sm:px-6 lg:px-10 py-3 w-full pb-24">
+                    <%- body %>
+                </main>
+
+                <%- include('partials/footer') %>
+        </div>
+
+        <!-- DRAWER SIDE -->
+        <%- include('partials/drawer') %>
+    </div>
+
+    <!-- Bottom Navbar -->
+    <%- include('partials/bottomnav') %>
+
+</body>
+
+</html>

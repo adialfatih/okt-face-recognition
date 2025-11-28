@@ -1,18 +1,28 @@
-<% layout('layout') -%>
-
-
+<% layout('layoutfull') -%>
     <section class="space-y-4 -mx-3 sm:-mx-6">
         <!-- Header -->
         <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-sky-600 text-white p-5 shadow-lg">
-            <h1 class="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                <i class="fa-solid fa-chart-line"></i>
-                <span>Laporan Absensi</span>
-            </h1>
-            <p class="text-xs sm:text-sm opacity-90 mt-1">
-                Pantau kehadiran karyawan berdasarkan departemen, divisi, jabatan, kategori, dan rentang tanggal.
-            </p>
-        </div>
+            <div class="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <span>Laporan Absensi</span>
+                    </h1>
+                    <p class="text-xs sm:text-sm opacity-90 mt-1">
+                        Pantau kehadiran karyawan berdasarkan departemen, divisi, jabatan, kategori, dan rentang
+                        tanggal.
+                    </p>
+                </div>
 
+                <div class="flex flex-wrap gap-2">
+                    <button id="btnCariData" type="button"
+                        class="btn btn-sm btn-outline border-white/70 text-white hover:bg-white/10 flex items-center gap-2">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <span>Cari Data</span>
+                    </button>
+                </div>
+            </div>
+        </div>
         <!-- Filter Card -->
         <div class="card bg-sky-50/80 shadow-sm border border-sky-100 w-full">
             <div class="card-body space-y-3">
@@ -27,79 +37,147 @@
                 </div>
 
                 <form id="filterForm" class="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-                    <!-- Tanggal -->
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs text-slate-600 font-medium">Tanggal dari</label>
-                        <input type="date" id="fltTglFrom" name="tgl_from"
-                            class="input input-sm input-bordered w-full" />
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs text-slate-600 font-medium">Tanggal s/d</label>
-                        <input type="date" id="fltTglTo" name="tgl_to" class="input input-sm input-bordered w-full" />
+                    <!-- Rentang Tanggal -->
+                    <div class="flex flex-col gap-1 md:col-span-2 lg:col-span-2">
+                        <label class="text-xs text-slate-600 font-medium">Rentang Tanggal</label>
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-calendar-day"></i>
+                            </span>
+                            <input type="text" id="fltDateRange" class="input input-sm input-bordered w-full pl-9"
+                                placeholder="Pilih rentang tanggal" autocomplete="off" />
+                        </div>
+
+                        <!-- Tombol preset tanggal -->
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            <button type="button" id="btnRangeToday"
+                                class="btn btn-ghost btn-xs border border-sky-100 text-sky-700 hover:bg-sky-100">
+                                Hari ini
+                            </button>
+                            <button type="button" id="btnRangeYesterday"
+                                class="btn btn-ghost btn-xs border border-sky-100 text-sky-700 hover:bg-sky-100">
+                                Kemarin
+                            </button>
+                            <button type="button" id="btnRangeThisWeek"
+                                class="btn btn-ghost btn-xs border border-sky-100 text-sky-700 hover:bg-sky-100">
+                                Minggu ini
+                            </button>
+                            <button type="button" id="btnRangeThisMonth"
+                                class="btn btn-ghost btn-xs border border-sky-100 text-sky-700 hover:bg-sky-100">
+                                Bulan ini
+                            </button>
+                            <button type="button" id="btnRangeClear"
+                                class="btn btn-ghost btn-xs text-slate-500 hover:bg-slate-100">
+                                Bersihkan
+                            </button>
+                        </div>
+
+                        <span class="text-[10px] text-slate-400 mt-1">
+                            Kosongkan jika ingin melihat semua tanggal.
+                        </span>
                     </div>
 
-                    <!-- Nama / NRP -->
+                    <!-- Nama -->
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-600 font-medium">Nama</label>
-                        <input type="text" id="fltNama" name="nama" placeholder="Cari nama..."
-                            class="input input-sm input-bordered w-full" />
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-user"></i>
+                            </span>
+                            <input type="text" id="fltNama" name="nama" placeholder="Cari nama..."
+                                class="input input-sm input-bordered w-full pl-9" autocomplete="off" />
+                        </div>
                     </div>
+
+                    <!-- NRP -->
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-600 font-medium">NRP</label>
-                        <input type="text" id="fltNrp" name="nrp" placeholder="Cari NRP..."
-                            class="input input-sm input-bordered w-full" />
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-id-card"></i>
+                            </span>
+                            <input type="text" id="fltNrp" name="nrp" placeholder="Cari NRP..."
+                                class="input input-sm input-bordered w-full pl-9" />
+                        </div>
                     </div>
 
-                    <!-- Dep / Divisi / Jabatan -->
+                    <!-- Departement -->
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-600 font-medium">Departement</label>
-                        <!-- <input type="text" id="fltDep" name="dep" placeholder="SPINNING / WEAVING ..."
-                            class="input input-sm input-bordered w-full" /> -->
-                        <select id="fltDep" name="dep" class="select select-sm select-bordered w-full">
-                            <option value="">Semua</option>
-                            <option value="Spinning">Spinning</option>
-                            <option value="Weaving">Weaving</option>
-
-                        </select>
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-building"></i>
+                            </span>
+                            <select id="fltDep" name="dep" class="select select-sm select-bordered w-full pl-9 pr-8">
+                                <option value="">Semua</option>
+                                <option value="Spinning">Spinning</option>
+                                <option value="Weaving">Weaving</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <!-- Divisi -->
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-600 font-medium">Divisi</label>
-                        <input type="text" id="fltDivisi" name="divisi" placeholder="Divisi..."
-                            class="input input-sm input-bordered w-full" />
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-diagram-project"></i>
+                            </span>
+                            <input type="text" id="fltDivisi" name="divisi" placeholder="Divisi..."
+                                class="input input-sm input-bordered w-full pl-9" autocomplete="off" />
+                        </div>
                     </div>
+
+                    <!-- Jabatan -->
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-600 font-medium">Jabatan</label>
-                        <input type="text" id="fltJabatan" name="jabatan" placeholder="Jabatan..."
-                            class="input input-sm input-bordered w-full" />
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-briefcase"></i>
+                            </span>
+                            <input type="text" id="fltJabatan" name="jabatan" placeholder="Jabatan..."
+                                class="input input-sm input-bordered w-full pl-9" autocomplete="off" />
+                        </div>
                     </div>
 
                     <!-- Kategori -->
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-600 font-medium">Kategori Absen</label>
-                        <select id="fltKategori" name="kategori" class="select select-sm select-bordered w-full">
-                            <option value="">Semua</option>
-                            <option>Masuk Shift Pagi</option>
-                            <option>Keluar Shift Pagi</option>
-                            <option>Masuk Shift Siang</option>
-                            <option>Keluar Shift Siang</option>
-                            <option>Masuk Shift Malam</option>
-                            <option>Keluar Shift Malam</option>
-                            <option>Masuk DS</option>
-                            <option>Keluar DS</option>
-                            <option>Masuk Driver</option>
-                            <option>Keluar Driver</option>
-                            <option>Masuk Security</option>
-                            <option>Keluar Security</option>
-                            <option>Masuk Terlambat</option>
-                            <option>Ijin Keluar</option>
-
-                        </select>
+                        <div class="relative">
+                            <span
+                                class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-list-check"></i>
+                            </span>
+                            <select id="fltKategori" name="kategori"
+                                class="select select-sm select-bordered w-full pl-9 pr-8">
+                                <option value="">Semua</option>
+                                <option>Masuk Shift Pagi</option>
+                                <option>Keluar Shift Pagi</option>
+                                <option>Masuk Shift Siang</option>
+                                <option>Keluar Shift Siang</option>
+                                <option>Masuk Shift Malam</option>
+                                <option>Keluar Shift Malam</option>
+                                <option>Masuk DS</option>
+                                <option>Keluar DS</option>
+                                <option>Masuk Driver</option>
+                                <option>Keluar Driver</option>
+                                <option>Masuk Security</option>
+                                <option>Keluar Security</option>
+                                <option>Masuk Terlambat</option>
+                                <option>Ijin Keluar</option>
+                            </select>
+                        </div>
                     </div>
                 </form>
-
                 <div class="flex justify-end pt-1">
                     <button id="btnApplyFilter" class="btn btn-sm btn-primary flex items-center gap-2">
-                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <i class="fa-solid fa-paper-plane"></i>
                         <span>Terapkan Filter</span>
                     </button>
                 </div>
@@ -244,6 +322,7 @@
     <!-- jQuery & DataTables (light) -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
-
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js@10.2.9/dist/autoComplete.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script defer src="/public/js/laporan-absensi.js"></script>
