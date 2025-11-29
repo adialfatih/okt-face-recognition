@@ -25,8 +25,12 @@
     const detJabatan = document.getElementById('detJabatan');
     const detLate = document.getElementById('detLate');
     const detCreated = document.getElementById('detCreatedAt');
-    const detPhoto = document.getElementById('detPhoto');
-    const detNoPhoto = document.getElementById('detNoPhoto');
+    const detDurasi = document.getElementById('detDurasi');
+    const detPhotoMasuk = document.getElementById('detPhotoMasuk');
+    const detNoPhotoMasuk = document.getElementById('detNoPhotoMasuk');
+    const detPhotoKeluar = document.getElementById('detPhotoKeluar');
+    const detNoPhotoKeluar = document.getElementById('detNoPhotoKeluar');
+
 
     let dt = null;
     let fpRange = null;
@@ -76,17 +80,25 @@
 
     function fmtDateTime(iso) {
         if (!iso) return '-';
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return iso;
-        const dd = String(d.getDate()).padStart(2, '0');
+
+        let s = String(iso).trim();
+        // Normalisasi beberapa kemungkinan format dari backend
+        s = s.replace('T', ' ').replace('.000Z', '').replace('Z', '');
+        const parts = s.split(' ');
+        const datePart = parts[0] || '';
+        const timePart = parts[1] || '';
+
+        const [y, m, d] = datePart.split('-');
+        if (!y || !m || !d) return iso;
+
         const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-        const mm = mNames[d.getMonth()];
-        const yyyy = d.getFullYear();
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mi = String(d.getMinutes()).padStart(2, '0');
-        const ss = String(d.getSeconds()).padStart(2, '0');
-        return `${dd} ${mm} ${yyyy} ${hh}:${mi}:${ss}`;
+        const idx = parseInt(m, 10) - 1;
+        const mm = mNames[idx] || m;
+
+        // Hasil: "25 Nov 2025 22:37:35"
+        return `${d} ${mm} ${y}${timePart ? ' ' + timePart : ''}`;
     }
+
 
     function fmtJam(j) {
         return j ? j.slice(0, 8) : '-';
@@ -101,6 +113,29 @@
         if (jam > 0) return `${jam}j ${m}m`;
         return `${m} menit`;
     }
+    function hitungDurasiMenit(jamMasuk, jamKeluar) {
+        if (!jamMasuk || !jamKeluar) return null;
+
+        const parse = (s) => {
+            const [hh, mm, ss] = String(s).split(':');
+            return {
+                h: parseInt(hh || '0', 10),
+                m: parseInt(mm || '0', 10),
+                s: parseInt(ss || '0', 10)
+            };
+        };
+
+        const a = parse(jamMasuk);
+        const b = parse(jamKeluar);
+
+        const t1 = a.h * 3600 + a.m * 60 + a.s;
+        const t2 = b.h * 3600 + b.m * 60 + b.s;
+        const diff = t2 - t1;
+        if (diff <= 0) return null;
+
+        return Math.floor(diff / 60); // menit
+    }
+
 
     function fmtTerlambat(isLate, menit) {
         if (!isLate) return '-';
@@ -282,12 +317,29 @@
             }
             const d = data.data;
 
+            // --- Info dasar ---
             detNama && (detNama.textContent = d.nama_snapshot || '-');
             detNrp && (detNrp.textContent = d.nrp || '-');
             detTanggal && (detTanggal.textContent = fmtTanggal(d.tanggal));
-            detKategori && (detKategori.textContent = d.kategori || '-');
-            detJamMasuk && (detJamMasuk.textContent = fmtJam(d.jam_masuk));
-            detJamKeluar && (detJamKeluar.textContent = fmtJam(d.jam_keluar));
+
+            // Kategori masuk/keluar digabung
+            const katMasuk = d.kategori_masuk || d.kategori || '-';
+            const katKeluar = d.kategori_keluar || '-';
+            if (detKategori) {
+                if (katKeluar && katKeluar !== '-') {
+                    detKategori.textContent = `Masuk: ${katMasuk} | Keluar: ${katKeluar}`;
+                } else {
+                    detKategori.textContent = `Masuk: ${katMasuk}`;
+                }
+            }
+
+            // Jam masuk/keluar (fallback ke d.jam jika perlu)
+            const jamMasukSrc = d.jam_masuk || d.jam || null;
+            const jamKeluarSrc = d.jam_keluar || null;
+
+            detJamMasuk && (detJamMasuk.textContent = fmtJam(jamMasukSrc));
+            detJamKeluar && (detJamKeluar.textContent = fmtJam(jamKeluarSrc));
+
             detShift && (detShift.textContent = d.shift_code || '-');
             detDep && (detDep.textContent = d.dep_snapshot || '-');
             detDivisi && (detDivisi.textContent = d.divisi_snapshot || '-');
@@ -295,15 +347,42 @@
             detLate && (detLate.textContent = fmtTerlambat(d.is_late, d.menit_terlambat));
             detCreated && (detCreated.textContent = fmtDateTime(d.created_at));
 
-            if (detPhoto && detNoPhoto) {
-                if (d.snapshot_base64) {
-                    detPhoto.src = d.snapshot_base64;
-                    detPhoto.classList.remove('hidden');
-                    detNoPhoto.classList.add('hidden');
+            // Durasi kerja (hitung di sisi front-end)
+            if (detDurasi) {
+                const menit = hitungDurasiMenit(jamMasukSrc, jamKeluarSrc);
+                detDurasi.textContent = menit != null ? fmtDurasi(menit) : '-';
+            }
+
+            // --- Foto Masuk & Keluar ---
+            if (detPhotoMasuk && detNoPhotoMasuk) {
+                let srcMasuk = d.snapshot_masuk || d.snapshot_base64 || null;
+                if (srcMasuk) {
+                    if (!srcMasuk.startsWith('data:')) {
+                        srcMasuk = 'data:image/jpeg;base64,' + srcMasuk;
+                    }
+                    detPhotoMasuk.src = srcMasuk;
+                    detPhotoMasuk.classList.remove('hidden');
+                    detNoPhotoMasuk.classList.add('hidden');
                 } else {
-                    detPhoto.src = '';
-                    detPhoto.classList.add('hidden');
-                    detNoPhoto.classList.remove('hidden');
+                    detPhotoMasuk.src = '';
+                    detPhotoMasuk.classList.add('hidden');
+                    detNoPhotoMasuk.classList.remove('hidden');
+                }
+            }
+
+            if (detPhotoKeluar && detNoPhotoKeluar) {
+                let srcKeluar = d.snapshot_keluar || null;
+                if (srcKeluar) {
+                    if (!srcKeluar.startsWith('data:')) {
+                        srcKeluar = 'data:image/jpeg;base64,' + srcKeluar;
+                    }
+                    detPhotoKeluar.src = srcKeluar;
+                    detPhotoKeluar.classList.remove('hidden');
+                    detNoPhotoKeluar.classList.add('hidden');
+                } else {
+                    detPhotoKeluar.src = '';
+                    detPhotoKeluar.classList.add('hidden');
+                    detNoPhotoKeluar.classList.remove('hidden');
                 }
             }
 

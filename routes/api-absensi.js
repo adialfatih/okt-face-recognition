@@ -187,6 +187,8 @@ router.get('/absensi/:id', async (req, res) => {
         const shiftCode = r.shift_code || deriveShiftCode(r.kategori || '');
         let jamMasuk = null;
         let jamKeluar = null;
+        let rowMasuk = null;
+        let rowKeluar = null;
 
         // Helper map kategori pasangan (fallback kalau shift_code belum ada)
         function pasanganKeluar(katMasuk) {
@@ -217,7 +219,7 @@ router.get('/absensi/:id', async (req, res) => {
             let pair;
             if (shiftCode) {
                 const p = await q(
-                    `SELECT id, jam, kategori FROM table_absensi
+                    `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
                      WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Keluar%'
                      ORDER BY jam ASC
                      LIMIT 1`,
@@ -228,7 +230,7 @@ router.get('/absensi/:id', async (req, res) => {
                 const katKeluar = pasanganKeluar(r.kategori);
                 if (katKeluar) {
                     const p = await q(
-                        `SELECT id, jam, kategori FROM table_absensi
+                        `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
                          WHERE nrp=? AND tanggal=? AND kategori=?
                          ORDER BY jam ASC
                          LIMIT 1`,
@@ -237,8 +239,13 @@ router.get('/absensi/:id', async (req, res) => {
                     pair = p[0];
                 }
             }
-            if (pair) jamKeluar = pair.jam;
-
+            if (pair) {
+                jamKeluar = pair.jam;
+                rowMasuk = r;
+                rowKeluar = pair;
+            } else {
+                rowMasuk = r;
+            }
         } else if ((r.kategori || '').startsWith('Keluar')) {
             jamKeluar = r.jam;
 
@@ -246,7 +253,7 @@ router.get('/absensi/:id', async (req, res) => {
             let pair;
             if (shiftCode) {
                 const p = await q(
-                    `SELECT id, jam, kategori FROM table_absensi
+                    `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
                      WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Masuk%'
                      ORDER BY jam ASC
                      LIMIT 1`,
@@ -257,7 +264,7 @@ router.get('/absensi/:id', async (req, res) => {
                 const katMasuk = pasanganMasuk(r.kategori);
                 if (katMasuk) {
                     const p = await q(
-                        `SELECT id, jam, kategori FROM table_absensi
+                        `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
                          WHERE nrp=? AND tanggal=? AND kategori=?
                          ORDER BY jam ASC
                          LIMIT 1`,
@@ -266,10 +273,17 @@ router.get('/absensi/:id', async (req, res) => {
                     pair = p[0];
                 }
             }
-            if (pair) jamMasuk = pair.jam;
+            if (pair) {
+                jamMasuk = pair.jam;
+                rowMasuk = pair;
+                rowKeluar = r;
+            } else {
+                rowKeluar = r;
+            }
         } else {
             // kategori lain (Masuk Terlambat, Ijin Keluar, dll)
             jamMasuk = r.jam;
+            rowMasuk = r;
         }
 
         res.json({
@@ -277,9 +291,14 @@ router.get('/absensi/:id', async (req, res) => {
             data: {
                 ...r,
                 jam_masuk: jamMasuk,
-                jam_keluar: jamKeluar
+                jam_keluar: jamKeluar,
+                kategori_masuk: rowMasuk ? rowMasuk.kategori : null,
+                kategori_keluar: rowKeluar ? rowKeluar.kategori : null,
+                snapshot_masuk: rowMasuk ? rowMasuk.snapshot_base64 : null,
+                snapshot_keluar: rowKeluar ? rowKeluar.snapshot_base64 : null
             }
         });
+
     } catch (e) {
         console.error('[absensi/:id] fail:', e);
         res.status(500).json({ ok: false, error: 'detail-failed' });
