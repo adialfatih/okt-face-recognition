@@ -116,8 +116,6 @@ function computeLateMinutes(kategori, now) {
     return diffMin > 0 ? diffMin : 0;
 }
 
-
-
 // --- Autocomplete Karyawan ---
 router.get('/karyawan/search', async (req, res) => {
     const qstr = (req.query.q || '').trim();
@@ -126,7 +124,7 @@ router.get('/karyawan/search', async (req, res) => {
     try {
         // 1) Cek cache
         let rows = await q(`
-     SELECT nrp, nama, dep, divisi, jabatan
+     SELECT nrp, nama, departement, divisi, jabatan
      FROM table_karyawan_cache
      WHERE nrp LIKE ? OR nama LIKE ?
      LIMIT 20
