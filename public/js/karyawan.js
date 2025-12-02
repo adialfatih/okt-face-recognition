@@ -9,6 +9,8 @@
   const sumTotal = document.getElementById('sumTotal');
   const sumSpinning = document.getElementById('sumSpinning');
   const sumWeaving = document.getElementById('sumWeaving');
+  const fltFace = document.getElementById('fltFace');
+  const fltDep = document.getElementById('fltDep');
 
   let page = 1, limit = 20, total = 0, busy = false, lastQ = '';
 
@@ -102,7 +104,11 @@
     list.innerHTML = `<div class="text-center text-sm text-slate-600">Memuat…</div>`;
 
     const qstr = q.value.trim();
-    const url = `/api/hr/karyawan?q=${encodeURIComponent(qstr)}&page=${page}&limit=${limit}`;
+    const face = fltFace ? fltFace.value : '';
+    const dep = fltDep ? fltDep.value : '';
+
+    const url = `/api/hr/karyawan?q=${encodeURIComponent(qstr)}&page=${page}&limit=${limit}` +
+      `&face=${encodeURIComponent(face)}&dep=${encodeURIComponent(dep)}`;
 
     try {
       const data = await fetch(url).then(r => r.json());
@@ -153,6 +159,12 @@
   // events
   btn.addEventListener('click', () => { page = 1; load(); });
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { page = 1; load(); } });
+  if (fltFace) {
+    fltFace.addEventListener('change', () => { page = 1; load(); });
+  }
+  if (fltDep) {
+    fltDep.addEventListener('change', () => { page = 1; load(); });
+  }
   let t;
   q.addEventListener('input', () => {
     clearTimeout(t);

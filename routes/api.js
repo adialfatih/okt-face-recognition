@@ -126,7 +126,7 @@ router.get('/karyawan/search', async (req, res) => {
     try {
         // 1) Cek cache
         let rows = await q(`
-     SELECT nrp, nama, departement AS dep, divisi, jabatan
+     SELECT nrp, nama, dep, divisi, jabatan
      FROM table_karyawan_cache
      WHERE nrp LIKE ? OR nama LIKE ?
      LIMIT 20
@@ -549,105 +549,176 @@ router.post('/faces/reset', async (req, res) => {
     res.json({ ok: true });
 });
 
-// GET /api/hr/karyawan?q=...&page=1&limit=20
-// router.get('/hr/karyawan', async (req, res) => {
-//     const qstr = (req.query.q || '').trim();
-//     const page = Math.max(1, parseInt(req.query.page || '1', 10));
-//     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
-//     const offset = (page - 1) * limit;
-//     const like = `%${qstr}%`;
-//     const where = qstr
-//         ? `WHERE nrp LIKE ? OR nama LIKE ? OR departement LIKE ? OR divisi LIKE ? OR jabatan LIKE ?`
-//         : '';
-//     const params = qstr ? [like, like, like, like, like] : [];
-//     const totalRow = await hrq(`SELECT COUNT(*) AS c FROM data_karyawan ${where}`, params);
-//     const rows = await hrq(
-//         `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status
-//     FROM data_karyawan ${where}
-//      ORDER BY nama ASC
-//      LIMIT ? OFFSET ?`,
-//         [...params, limit, offset]
-//     );
-//     res.json({ page, limit, total: Number(totalRow?.[0]?.c || 0), rows });
-// });
-// GET /api/hr/karyawan?q=...&page=1&limit=20
+// GET /api/hr/karyawan?q=...&page=1&limit=20&face=&dep=
 router.get('/hr/karyawan', async (req, res) => {
     const qstr = (req.query.q || '').trim();
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '20', 10)));
     const offset = (page - 1) * limit;
+
+    const faceFilter = (req.query.face || '').trim().toLowerCase(); // '', 'with', 'without'
+    const depFilter = (req.query.dep || '').trim();
     const like = `%${qstr}%`;
-    const where = qstr
-        ? `WHERE nrp LIKE ? OR nama LIKE ? OR departement LIKE ? OR divisi LIKE ? OR jabatan LIKE ?`
-        : '';
-    const params = qstr ? [like, like, like, like, like] : [];
 
-    // 1) Total baris di HR (untuk pagination & meta)
-    const totalRow = await hrq(`SELECT COUNT(*) AS c FROM data_karyawan ${where}`, params);
-    const totalAll = Number(totalRow?.[0]?.c || 0);
+    // Build WHERE untuk table_karyawan lokal
+    const whereClauses = [];
+    const params = [];
 
-    // 2) Ambil halaman data dari HR
-    const rows = await hrq(
-        `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status
-         FROM data_karyawan ${where}
-         ORDER BY nama ASC
-         LIMIT ? OFFSET ?`,
-        [...params, limit, offset]
-    );
-
-    // 3) Cek siapa yang sudah punya face embedding di absensi_db_rjs
-    let faceSet = new Set();
-    if (rows.length > 0) {
-        const nrps = rows.map(r => r.nrp);
-        const placeholders = nrps.map(() => '?').join(',');
-        const faceRows = await q(
-            `SELECT DISTINCT nrp FROM table_face_embeddings WHERE nrp IN (${placeholders})`,
-            nrps
+    if (qstr) {
+        whereClauses.push(
+            `(nrp LIKE ? OR nama LIKE ? OR dep LIKE ? OR divisi LIKE ? OR jabatan LIKE ?)`
         );
-        faceSet = new Set(faceRows.map(fr => fr.nrp));
+        params.push(like, like, like, like, like);
+    }
+    if (depFilter) {
+        whereClauses.push(`dep = ?`);
+        params.push(depFilter);
     }
 
-    const mapped = rows.map(r => ({
-        ...r,
-        hasFace: faceSet.has(r.nrp)
-    }));
+    const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
+    try {
+        // 1) Ambil semua data dari table_karyawan (lokal)
+        const allRows = await q(
+            `SELECT nrp, nama, dep, divisi, jabatan, status
+             FROM table_karyawan
+             ${whereSql}
+             ORDER BY nama ASC`,
+            params
+        );
 
-    const [sumRow] = await q(`
-        SELECT 
-            COUNT(*) AS total,
-            SUM(CASE WHEN UPPER(dep) = 'SPINNING' THEN 1 ELSE 0 END) AS spinning,
-            SUM(CASE WHEN UPPER(dep) = 'WEAVING' THEN 1 ELSE 0 END) AS weaving
-        FROM table_karyawan
-    `);
-
-    res.json({
-        page,
-        limit,
-        total: totalAll,     // ini tetap total versi HR, untuk meta "1–20 dari X"
-        rows: mapped,
-        summary: {
-            total: Number(sumRow?.total || 0),
-            spinning: Number(sumRow?.spinning || 0),
-            weaving: Number(sumRow?.weaving || 0)
+        if (!allRows.length) {
+            return res.json({
+                page,
+                limit,
+                total: 0,
+                rows: [],
+                summary: {
+                    total: 0,
+                    spinning: 0,
+                    weaving: 0
+                }
+            });
         }
-    });
+
+        // Kumpulkan semua NRP
+        const nrps = allRows.map(r => r.nrp).filter(Boolean);
+        const placeholders = nrps.map(() => '?').join(',');
+
+        // 2) Ambil status teks dari HR (rjsmanage.data_karyawan)
+        let hrStatusMap = new Map();
+        if (nrps.length) {
+            const hrRows = await hrq(
+                `SELECT nrp, status 
+                 FROM data_karyawan 
+                 WHERE nrp IN (${placeholders})`,
+                nrps
+            );
+            hrStatusMap = new Map(hrRows.map(r => [r.nrp, r.status]));
+        }
+
+        // 3) Ambil info wajah dari table_face_embeddings
+        let faceSet = new Set();
+        if (nrps.length) {
+            const faceRows = await q(
+                `SELECT DISTINCT nrp FROM table_face_embeddings WHERE nrp IN (${placeholders})`,
+                nrps
+            );
+            faceSet = new Set(faceRows.map(fr => fr.nrp));
+        }
+
+        // 4) Gabungkan: data lokal + status HR + flag hasFace
+        let mapped = allRows.map(r => ({
+            ...r,
+            status: hrStatusMap.get(r.nrp) || r.status, // override status angka dengan status HR (teks)
+            hasFace: faceSet.has(r.nrp)
+        }));
+
+        // 5) Filter wajah jika diminta
+        if (faceFilter === 'with') {
+            mapped = mapped.filter(r => r.hasFace);
+        } else if (faceFilter === 'without') {
+            mapped = mapped.filter(r => !r.hasFace);
+        }
+
+        const totalAll = mapped.length;
+        const rows = mapped.slice(offset, offset + limit);
+
+        // 6) Summary tetap dari table_karyawan (lokal)
+        const [sumRow] = await q(`
+            SELECT 
+                COUNT(*) AS total,
+                SUM(CASE WHEN UPPER(dep) = 'SPINNING' THEN 1 ELSE 0 END) AS spinning,
+                SUM(CASE WHEN UPPER(dep) = 'WEAVING' THEN 1 ELSE 0 END) AS weaving
+            FROM table_karyawan
+        `);
+
+        res.json({
+            page,
+            limit,
+            total: totalAll,
+            rows,
+            summary: {
+                total: Number(sumRow?.total || 0),
+                spinning: Number(sumRow?.spinning || 0),
+                weaving: Number(sumRow?.weaving || 0)
+            }
+        });
+
+    } catch (e) {
+        console.error('[hr/karyawan] local+hr fail:', e);
+        res.status(500).json({ error: 'local-karyawan-failed' });
+    }
 });
 
+
 // GET /api/hr/karyawan/:nrp
+// router.get('/hr/karyawan/:nrp', async (req, res) => {
+//     const nrp = (req.params.nrp || '').trim();
+//     if (!nrp) return res.status(400).json({ error: 'nrp required' });
+//     const rows = await hrq(
+//         `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status,
+//             tmt, tmp_lahir, tgl_lahir, goldar, jnskel, no_ktp, no_kk, npwp,
+//             nohp, alamat, kel, kec, kabkota, prov, kodepos, pendidikan,
+//             notelp, email, status_pernikahan, kode_pernikahan, norek_bca,
+//             status_io, kjk, jam_kerja, istirahat_kerja
+//      FROM data_karyawan WHERE nrp=? LIMIT 1`, [nrp]);
+//     if (!rows.length) return res.status(404).json({ error: 'not found' });
+//     res.json(rows[0]);
+// });
 router.get('/hr/karyawan/:nrp', async (req, res) => {
     const nrp = (req.params.nrp || '').trim();
     if (!nrp) return res.status(400).json({ error: 'nrp required' });
-    const rows = await hrq(
-        `SELECT idkar, nrp, nama, departement AS dep, divisi, jabatan, status,
-            tmt, tmp_lahir, tgl_lahir, goldar, jnskel, no_ktp, no_kk, npwp,
-            nohp, alamat, kel, kec, kabkota, prov, kodepos, pendidikan,
-            notelp, email, status_pernikahan, kode_pernikahan, norek_bca,
-            status_io, kjk, jam_kerja, istirahat_kerja
-     FROM data_karyawan WHERE nrp=? LIMIT 1`, [nrp]);
-    if (!rows.length) return res.status(404).json({ error: 'not found' });
-    res.json(rows[0]);
+
+    // Data utama dari table_karyawan (lokal)
+    const rowsLocal = await q(
+        `SELECT nrp, nama, dep, divisi, jabatan, status
+         FROM table_karyawan
+         WHERE nrp = ?
+         LIMIT 1`,
+        [nrp]
+    );
+    if (!rowsLocal.length) {
+        return res.status(404).json({ error: 'not found' });
+    }
+    const base = rowsLocal[0];
+
+    // Status teks dari HR
+    const hrRows = await hrq(
+        `SELECT status 
+         FROM data_karyawan
+         WHERE nrp = ?
+         LIMIT 1`,
+        [nrp]
+    );
+    const statusText = hrRows.length ? hrRows[0].status : base.status;
+
+    res.json({
+        ...base,
+        status: statusText
+    });
 });
+
 
 
 // Webhook: invalidasi cache per-NRP (dipanggil dari CI/HR saat data berubah)

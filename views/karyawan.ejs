@@ -15,6 +15,7 @@
         </div>
 
         <!-- FILTER & SEARCH -->
+        <!-- FILTER & SEARCH -->
         <div class="card bg-white shadow-sm border border-sky-100">
             <div class="card-body space-y-3">
 
@@ -35,14 +36,41 @@
                                 <span class="hidden sm:inline ml-1">Cari</span>
                             </button>
                         </div>
-
                     </label>
-
                 </div>
 
+                <!-- Face & Departement Filter -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-sky-50">
+                    <label class="form-control">
+                        <span class="label-text text-sm font-semibold text-slate-700 mb-1">
+                            <i class="fa-solid fa-user-check mr-1 text-emerald-500"></i>
+                            Status Rekam Wajah
+                        </span>
+                        <select id="fltFace"
+                            class="select select-bordered bg-white border-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:border-sky-400">
+                            <option value="">Semua Karyawan</option>
+                            <option value="with">Sudah Rekam Wajah</option>
+                            <option value="without">Belum Rekam Wajah</option>
+                        </select>
+                    </label>
+
+                    <label class="form-control">
+                        <span class="label-text text-sm font-semibold text-slate-700 mb-1">
+                            <i class="fa-solid fa-building-user mr-1 text-sky-600"></i>
+                            Filter Departement
+                        </span>
+                        <select id="fltDep"
+                            class="select select-bordered bg-white border-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:border-sky-400">
+                            <option value="">Semua Departement</option>
+                            <option value="SPINNING">SPINNING</option>
+                            <option value="WEAVING">WEAVING</option>
+                        </select>
+                    </label>
+                </div>
 
             </div>
         </div>
+
 
         <!-- TABEL DESKTOP -->
         <div class="hidden sm:block">
