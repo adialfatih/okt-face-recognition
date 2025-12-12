@@ -1,0 +1,93 @@
+<% layout('layout') -%>
+
+    <section class="space-y-4">
+        <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-sky-600 text-white p-4 shadow-lg">
+            <h1 class="text-lg md:text-2xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-microscope"></i>
+                <span>Debug Jarak Face Recognition</span>
+            </h1>
+            <p class="text-xs md:text-sm opacity-90 mt-1">
+                Gunakan halaman ini untuk menguji jarak (distance) antara wajah dan data di database tanpa mencatat
+                absensi.
+            </p>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)] items-start">
+            <!-- VIDEO -->
+            <div class="card bg-white shadow-md border border-sky-100">
+                <div class="card-body space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold text-slate-700">
+                            <i class="fa-solid fa-camera-retro mr-1 text-sky-600"></i>
+                            Kamera Debug
+                        </span>
+                        <button id="btnSwitchCam"
+                            class="btn btn-xs md:btn-sm bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200">
+                            <i class="fa-solid fa-arrows-rotate mr-1"></i>
+                            Ganti Kamera
+                        </button>
+                    </div>
+
+                    <div class="relative rounded-2xl overflow-hidden border border-sky-100 bg-slate-900/5">
+                        <video id="video" autoplay playsinline class="w-full rounded-2xl bg-black/80"></video>
+                        <canvas id="overlay" class="absolute inset-0"></canvas>
+                    </div>
+
+                    <p class="text-[11px] text-slate-500">
+                        Posisikan satu wajah di dalam lingkaran. Sistem akan menampilkan jarak best dan second-best
+                        secara live.
+                    </p>
+                </div>
+            </div>
+
+            <!-- PANEL INFO -->
+            <div class="space-y-3">
+                <div class="card bg-white shadow-md border border-sky-100">
+                    <div class="card-body space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-xs uppercase tracking-wide text-slate-400">Konfigurasi</div>
+                                <div class="text-sm font-semibold text-slate-700">Threshold & Margin</div>
+                            </div>
+                            <div id="cfgFace" class="text-right text-xs text-slate-500">
+                                threshold: <span id="cfgThreshold">-</span><br />
+                                margin: <span id="cfgMargin">-</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="text-xs uppercase tracking-wide text-slate-400 mb-1">Hasil Terakhir</div>
+                            <div id="lastResult" class="text-xs sm:text-sm text-slate-700">
+                                Belum ada deteksi
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="text-xs uppercase tracking-wide text-slate-400 mb-1">Statistik Sesi</div>
+                            <div id="sessionStats" class="text-xs sm:text-sm text-slate-700">
+                                Total deteksi: 0<br />
+                                Rata-rata jarak (recognized): -
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-slate-50 border border-slate-100">
+                    <div class="card-body space-y-1 text-[11px] text-slate-500">
+                        <p class="font-semibold text-slate-600">Tips interpretasi:</p>
+                        <ul class="list-disc list-inside space-y-0.5">
+                            <li>Semakin kecil jarak, semakin mirip dengan data di database.</li>
+                            <li>Biasanya jarak &lt; 0.35 sangat aman, 0.35–0.45 borderline, &gt; 0.45 berisiko unknown.
+                            </li>
+                            <li>Jika second-best sangat dekat dengan best, wajahnya mirip dengan karyawan lain.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="toastArea" class="fixed inset-x-0 top-4 flex justify-center z-50 pointer-events-none"></div>
+    </section>
+
+    <script defer src="/public/js/face-common.js"></script>
+    <script defer src="/public/js/debug-match.js"></script>

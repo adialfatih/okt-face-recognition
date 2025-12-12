@@ -385,6 +385,13 @@ router.post('/faces', async (req, res) => {
         console.error(e); res.status(500).json({ error: 'faces save failed' });
     }
 });
+// --- Expose face config for frontend debug (threshold & margin) ---
+router.get('/config/face', (req, res) => {
+    res.json({
+        threshold: FACE_THRESHOLD,
+        marginMin: FACE_MARGIN_MIN
+    });
+});
 
 // --- Absensi submit (anti-dobel per hari & kategori) ---
 router.post('/absen', async (req, res) => {
@@ -748,6 +755,155 @@ router.post('/cache/sync-now', async (req, res) => {
         console.error(e); res.status(500).json({ error: 'sync failed' });
     }
 });
+
+
+// --- Monitoring deteksi log ---
+// GET /api/deteksi-log?context=absensi&status=&tgl_from=&tgl_to=&limit=100
+router.get('/deteksi-log', async (req, res) => {
+    try {
+        const {
+            context = 'absensi',
+            status,
+            tgl_from,
+            tgl_to,
+            nrp,
+            limit = '100'
+        } = req.query || {};
+
+        const where = [];
+        const params = [];
+
+        if (context) {
+            where.push('context = ?');
+            params.push(context);
+        }
+        if (status) {
+            where.push('status = ?');
+            params.push(status);
+        }
+        if (tgl_from) {
+            where.push('DATE(created_at) >= ?');
+            params.push(tgl_from);
+        }
+        if (tgl_to) {
+            where.push('DATE(created_at) <= ?');
+            params.push(tgl_to);
+        }
+        if (nrp) {
+            where.push('nrp_detected LIKE ?');
+            params.push(`%${nrp}%`);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const lim = Math.min(500, Math.max(10, parseInt(limit, 10) || 100));
+
+        const rows = await q(
+            `
+            SELECT 
+              id,
+              context,
+              kategori,
+              nrp_detected,
+              distance,
+              status,
+              created_at
+            FROM table_deteksi_log
+            ${whereSql}
+            ORDER BY created_at DESC
+            LIMIT ${lim}
+            `,
+            params
+        );
+
+        res.json({ ok: true, rows });
+    } catch (e) {
+        console.error('[deteksi-log] fail:', e);
+        res.status(500).json({ ok: false, error: 'deteksi-log-failed' });
+    }
+});
+
+// GET /api/deteksi-log/:id/frame → kembalikan snapshot sebagai gambar JPEG (kalau ada)
+router.get('/deteksi-log/:id/frame', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id || '0', 10);
+        if (!id) return res.status(400).send('invalid id');
+
+        const [row] = await q(
+            `SELECT frame_snapshot FROM table_deteksi_log WHERE id = ? LIMIT 1`,
+            [id]
+        );
+        if (!row || !row.frame_snapshot) {
+            return res.status(404).send('no image');
+        }
+
+        res.setHeader('Content-Type', 'image/jpeg');
+        return res.end(row.frame_snapshot);
+    } catch (e) {
+        console.error('[deteksi-log/frame] fail:', e);
+        res.status(500).send('error');
+    }
+});
+// GET /api/deteksi-log/summary?context=absensi&status=&tgl_from=&tgl_to=&nrp=
+router.get('/deteksi-log/summary', async (req, res) => {
+    try {
+        const {
+            context = 'absensi',
+            status,
+            tgl_from,
+            tgl_to,
+            nrp
+        } = req.query || {};
+
+        const where = [];
+        const params = [];
+
+        if (context) {
+            where.push('context = ?');
+            params.push(context);
+        }
+        if (status) {
+            where.push('status = ?');
+            params.push(status);
+        }
+        if (tgl_from) {
+            where.push('DATE(created_at) >= ?');
+            params.push(tgl_from);
+        }
+        if (tgl_to) {
+            where.push('DATE(created_at) <= ?');
+            params.push(tgl_to);
+        }
+        if (nrp) {
+            where.push('nrp_detected LIKE ?');
+            params.push(`%${nrp}%`);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        const rows = await q(
+            `
+            SELECT 
+              DATE(created_at) AS tgl,
+              COUNT(*) AS total,
+              SUM(CASE WHEN status = 'recognized' THEN 1 ELSE 0 END) AS recognized,
+              SUM(CASE WHEN status = 'unknown' THEN 1 ELSE 0 END) AS unknown,
+              SUM(CASE WHEN status = 'ambiguous' THEN 1 ELSE 0 END) AS ambiguous
+            FROM table_deteksi_log
+            ${whereSql}
+            GROUP BY DATE(created_at)
+            ORDER BY DATE(created_at) DESC
+            LIMIT 14
+            `,
+            params
+        );
+
+        res.json({ ok: true, rows });
+    } catch (e) {
+        console.error('[deteksi-log/summary] fail:', e);
+        res.status(500).json({ ok: false, error: 'summary-failed' });
+    }
+});
+
 
 router.use(absensiRouter);
 module.exports = router;

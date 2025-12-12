@@ -1,0 +1,187 @@
+<% layout('layout') -%>
+
+    <section class="space-y-4">
+        <!-- HEADER -->
+        <div class="rounded-2xl bg-gradient-to-r from-sky-400 via-sky-500 to-emerald-500 text-white p-4 shadow-lg">
+            <h1 class="text-lg md:text-2xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>Monitoring Deteksi Wajah</span>
+            </h1>
+            <p class="text-xs md:text-sm opacity-90 mt-1">
+                Melihat log hasil deteksi (recognized / unknown / ambiguous) untuk analisa dan debugging akurasi face
+                recognition.
+            </p>
+        </div>
+        <style>
+            /* FORCE LIGHT THEME UNTUK BAGIAN FILTER */
+            .filter-light * {
+                --tw-bg-opacity: 1 !important;
+                --tw-text-opacity: 1 !important;
+                color: #1f2937 !important;
+                /* slate-700 */
+            }
+
+            .filter-light .input,
+            .filter-light .select,
+            .filter-light .btn,
+            .filter-light input,
+            .filter-light select {
+                background-color: #ffffff !important;
+                color: #1f2937 !important;
+                border-color: #d1d5db !important;
+                /* slate-300 */
+            }
+
+            /* Jika DaisyUI inject dark style ke input-group */
+            .filter-light .input-group>* {
+                background-color: #ffffff !important;
+                color: #1f2937 !important;
+                border-color: #d1d5db !important;
+            }
+
+            /* Datepicker dark fix (Flatpickr / flowbite) */
+            .filter-light .flatpickr-calendar,
+            .filter-light .flatpickr-months,
+            .filter-light .flatpickr-days {
+                background: #ffffff !important;
+                color: #1f2937 !important;
+            }
+        </style>
+
+        <!-- FILTER -->
+        <div class="filter-light card bg-white shadow-sm border border-slate-100">
+            <div class="card-body grid gap-3 md:grid-cols-[repeat(5,minmax(0,1fr))] items-end">
+                <div>
+                    <label class="label py-0"><span class="label-text text-xs">Tanggal dari</span></label>
+                    <input id="fltFrom" type="date" class="input input-sm input-bordered w-full" />
+                </div>
+                <div>
+                    <label class="label py-0"><span class="label-text text-xs">Tanggal sampai</span></label>
+                    <input id="fltTo" type="date" class="input input-sm input-bordered w-full" />
+                </div>
+                <div>
+                    <label class="label py-0"><span class="label-text text-xs">Status</span></label>
+                    <select id="fltStatus" class="select select-sm select-bordered w-full">
+                        <option value="">Semua</option>
+                        <option value="recognized">recognized</option>
+                        <option value="unknown">unknown</option>
+                        <option value="ambiguous">ambiguous</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="label py-0"><span class="label-text text-xs">NRP</span></label>
+                    <input id="fltNrp" type="text" placeholder="Cari NRP..."
+                        class="input input-sm input-bordered w-full" />
+                </div>
+                <div class="flex gap-2">
+                    <button id="btnApply" class="btn btn-sm btn-primary flex-1">
+                        <i class="fa-solid fa-filter mr-1"></i> Terapkan
+                    </button>
+                    <button id="btnReset" class="btn btn-sm btn-ghost">
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUMMARY -->
+        <div class="grid gap-3 md:grid-cols-3">
+            <div class="card bg-sky-50 border border-sky-100">
+                <div class="card-body p-3 space-y-1">
+                    <div class="text-[10px] uppercase tracking-wide text-sky-600 font-semibold">Log Saat Ini</div>
+                    <div class="text-2xl font-bold text-slate-800">
+                        <span id="lblCount">0</span>
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                        Baris log sesuai filter di bawah.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card bg-emerald-50 border border-emerald-100">
+                <div class="card-body p-3 space-y-1">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] uppercase tracking-wide text-emerald-600 font-semibold">Rasio Harian
+                        </div>
+                        <div class="text-[10px] text-slate-500" id="lblSummaryRange">-</div>
+                    </div>
+                    <div class="flex items-center gap-4 mt-1">
+                        <div>
+                            <div class="text-xs text-emerald-700">Recognized</div>
+                            <div class="text-lg font-bold text-emerald-700">
+                                <span id="lblPctRecognized">-</span><span class="text-xs">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-rose-600">Unknown</div>
+                            <div class="text-lg font-bold text-rose-600">
+                                <span id="lblPctUnknown">-</span><span class="text-xs">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                        Rata-rata persentase per hari (max 14 hari terakhir).
+                    </div>
+                </div>
+            </div>
+
+            <div class="card bg-slate-50 border border-slate-100">
+                <div class="card-body p-3 space-y-1 text-[11px] text-slate-600">
+                    <div class="font-semibold text-slate-700 mb-1">Keterangan</div>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="inline-flex items-center gap-1"><span
+                                class="w-2 h-2 rounded-full bg-emerald-500"></span> recognized</span>
+                        <span class="inline-flex items-center gap-1"><span
+                                class="w-2 h-2 rounded-full bg-amber-500"></span> ambiguous</span>
+                        <span class="inline-flex items-center gap-1"><span
+                                class="w-2 h-2 rounded-full bg-rose-500"></span> unknown</span>
+                    </div>
+                    <p class="mt-1">
+                        Gunakan kombinasi tanggal + NRP untuk mencari kasus sulit terdeteksi per orang.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABEL -->
+        <div class="card bg-white shadow-sm border border-slate-100">
+            <div class="card-body space-y-2">
+                <div class="flex items-center justify-between text-xs text-slate-500">
+                    <div>
+                        Menampilkan <span id="lblCountInline">0</span> log terakhir
+                    </div>
+                </div>
+                <style>
+                    /* Zebra custom hanya untuk tabel ini, full light */
+                    #logBody tr:nth-child(even) {
+                        background-color: #f9fafb;
+                        /* slate-50-ish */
+                    }
+
+                    #logBody tr:nth-child(odd) {
+                        background-color: #ffffff;
+                    }
+                </style>
+
+                <div class="overflow-x-auto rounded-xl border border-slate-100">
+                    <table class="table table-xs md:table-sm">
+                        <thead class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                            <tr>
+                                <th class="w-10 text-center">#</th>
+                                <th class="whitespace-nowrap">Waktu</th>
+                                <th class="whitespace-nowrap">NRP</th>
+                                <th class="whitespace-nowrap">Kategori</th>
+                                <th class="whitespace-nowrap text-right">Distance</th>
+                                <th class="whitespace-nowrap text-center">Status</th>
+                                <th class="whitespace-nowrap text-center">Frame</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logBody" class="text-[11px] md:text-xs text-slate-700">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script defer src="/public/js/deteksi-log.js"></script>

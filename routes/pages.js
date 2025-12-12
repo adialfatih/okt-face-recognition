@@ -26,5 +26,15 @@ router.get('/ijin', (req, res) => res.render('placeholder', { title: 'Ijin' }));
 router.get('/laporan', (req, res) => res.render('laporan-absensi', { title: 'Laporan Absensi' }));
 router.get('/about', (req, res) => res.render('about'));
 
+// Debug face distance (live via kamera)
+router.get('/debug/match', (req, res) => {
+    res.render('debug-match');
+});
+
+// Monitoring deteksi log
+router.get('/deteksi-log', (req, res) => {
+    res.render('deteksi-log');
+});
+
 
 module.exports = router;
