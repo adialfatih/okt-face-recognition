@@ -23,9 +23,12 @@ const router = express.Router();
 const { mapCacheToUI, ensureInCache, fullSyncFromHR, invalidateNRP, ACTIVE_STATUSES } = require('../services/karyawanCache');
 const absensiRouter = require('./api-absensi');
 
-const FACE_THRESHOLD = Number(process.env.FACE_DISTANCE_THRESHOLD || 0.5);
-// Minimum selisih jarak antara kandidat terbaik dan kedua terbaik
-const FACE_MARGIN_MIN = Number(process.env.FACE_MARGIN_MIN || 0.08);
+// const FACE_THRESHOLD = Number(process.env.FACE_DISTANCE_THRESHOLD || 0.5);
+// const FACE_MARGIN_MIN = Number(process.env.FACE_MARGIN_MIN || 0.08);
+
+const FACE_THRESHOLD = Number(process.env.FACE_DISTANCE_THRESHOLD || 0.45);
+const FACE_MARGIN_MIN = Number(process.env.FACE_MARGIN_MIN || 0.05);
+
 
 // ==== Embedding Cache (supaya match cepat untuk 1000+ karyawan) ====
 let EMB_CACHE = []; // [{ nrp, emb: Float32Array }]
