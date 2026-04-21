@@ -32,3 +32,68 @@ absensi-face-node/
 │ └─ about.ejs
 └─ sql/
 └─ schema.sql
+
+
+5. Next step kalau kamu mau kita benerin bareng
+
+Tanpa tanya balik, dari sisi teknis aku akan arah ke:
+
+Pindah model ke lokal
+Ubah face-common.js pakai /public/models lagi dan pastikan file lengkap.
+
+Tambahkan quality gate di absensi.js
+
+Minimal detection.score
+
+Minimal/maksimal tinggi wajah relatif ke frame
+(pakai pola yang mirip rekam, tapi sedikit lebih longgar).
+
+Longgarkan sedikit threshold & margin
+Misal:
+
+FACE_DISTANCE_THRESHOLD → 0.55–0.6
+
+FACE_MARGIN_MIN → 0.03–0.05
+(nanti idealnya pakai data table_deteksi_log untuk cari angka paling aman).
+
+Ambil beberapa frame sebelum kirim ke /absen
+
+Contoh: ambil 3 descriptor dalam ~1 detik, pilih jarak terkecil.
+
+Bedakan pesan error di frontend
+
+
+
+Kalau reason: 'ambiguous' → tampilkan “Wajah mirip dua orang, ulangi dengan posisi lebih dekat dan sendiri.”
+
+Kalau reason: 'inactive' → tampilkan “Status karyawan sudah tidak aktif.”
+
+Kalau kamu bilang “lanjut patch”, nanti aku langsung kasih diffs spesifik file-per-file (tanpa merusak flow yang sudah jalan).
+
+
+
+
+
+
+
+age_gender_model - shard1
+age_gender_model - weights_manifest.json
+
+public / models / age_gender_model - shard1
+public / models / age_gender_model - weights_manifest.json
+public / models / face_expression_model - shard1
+public / models / face_expression_model - weights_manifest.json
+public / models / face_landmark_68_model - shard1
+public / models / face_landmark_68_model - weights_manifest.json
+public / models / face_landmark_68_tiny_model - shard1
+public / models / face_landmark_68_tiny_model - weights_manifest.json
+public / models / face_recognition_model - shard1
+public / models / face_recognition_model - shard2
+public / models / face_recognition_model - weights_manifest.json
+public / models / mtcnn_model - shard1
+public / models / mtcnn_model - weights_manifest.json
+public / models / ssd_mobilenetv1_model - shard1
+public / models / ssd_mobilenetv1_model - shard2
+public / models / ssd_mobilenetv1_model - weights_manifest.json
+public / models / tiny_face_detector_model - shard1
+public / models / tiny_face_detector_model - weights_manifest.json

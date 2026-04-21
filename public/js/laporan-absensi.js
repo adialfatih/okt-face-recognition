@@ -474,6 +474,25 @@
             });
 
             if (!result.isConfirmed || !result.value) return;
+            const { value: passwordEdit } = await Swal.fire({
+                title: 'Otorisasi Diperlukan',
+                input: 'password',
+                inputLabel: 'Masukkan password untuk mengedit data',
+                inputPlaceholder: 'Password',
+                showCancelButton: true,
+                confirmButtonColor: '#0ea5e9',
+                cancelButtonColor: '#94a3b8',
+                confirmButtonText: 'Lanjut',
+                cancelButtonText: 'Batal'
+            });
+
+            // Password hardcode. Silakan ubah sesuai keinginan Bos.
+            if (passwordEdit !== 'jangkrik15') {
+                if (passwordEdit) { // Munculkan error jika diisi salah (bukan karena klik batal)
+                    Swal.fire({ icon: 'error', title: 'Ditolak', text: 'Password salah!' });
+                }
+                return;
+            }
 
             const payload = result.value;
 
@@ -566,6 +585,26 @@
             });
 
             if (!result.isConfirmed) return;
+
+            const { value: passwordDel } = await Swal.fire({
+                title: 'Otorisasi Diperlukan',
+                input: 'password',
+                inputLabel: 'Masukkan password untuk menghapus data',
+                inputPlaceholder: 'Password',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444', // Warna disamakan dengan tema hapus (merah)
+                cancelButtonColor: '#94a3b8',
+                confirmButtonText: 'Lanjut',
+                cancelButtonText: 'Batal'
+            });
+
+            // Password hardcode.
+            if (passwordDel !== 'jangkrik15') {
+                if (passwordDel) {
+                    Swal.fire({ icon: 'error', title: 'Ditolak', text: 'Password salah!' });
+                }
+                return;
+            }
 
             const respDel = await fetch('/api/absensi/pair/' + encodeURIComponent(id), {
                 method: 'DELETE',
