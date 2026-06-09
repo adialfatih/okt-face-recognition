@@ -144,6 +144,17 @@
         return `Terlambat ${n} menit`;
     }
 
+    // Tentukan src <img> dari nilai snapshot:
+    // - data URI / URL (http, /storage/...) dipakai apa adanya
+    // - selain itu dianggap base64 mentah lama → diberi prefix data URI
+    function resolveSnapshotSrc(val) {
+        if (!val) return '';
+        if (val.startsWith('data:') || val.startsWith('http') || val.startsWith('/')) {
+            return val;
+        }
+        return 'data:image/jpeg;base64,' + val;
+    }
+
     function serializeFilter() {
         const p = new URLSearchParams();
 
@@ -355,11 +366,9 @@
 
             // --- Foto Masuk & Keluar ---
             if (detPhotoMasuk && detNoPhotoMasuk) {
-                let srcMasuk = d.snapshot_masuk || d.snapshot_base64 || null;
+                let srcMasuk = d.snapshot_masuk || d.snapshot_url || d.snapshot_base64 || null;
                 if (srcMasuk) {
-                    if (!srcMasuk.startsWith('data:')) {
-                        srcMasuk = 'data:image/jpeg;base64,' + srcMasuk;
-                    }
+                    srcMasuk = resolveSnapshotSrc(srcMasuk);
                     detPhotoMasuk.src = srcMasuk;
                     detPhotoMasuk.classList.remove('hidden');
                     detNoPhotoMasuk.classList.add('hidden');
@@ -373,9 +382,7 @@
             if (detPhotoKeluar && detNoPhotoKeluar) {
                 let srcKeluar = d.snapshot_keluar || null;
                 if (srcKeluar) {
-                    if (!srcKeluar.startsWith('data:')) {
-                        srcKeluar = 'data:image/jpeg;base64,' + srcKeluar;
-                    }
+                    srcKeluar = resolveSnapshotSrc(srcKeluar);
                     detPhotoKeluar.src = srcKeluar;
                     detPhotoKeluar.classList.remove('hidden');
                     detNoPhotoKeluar.classList.add('hidden');

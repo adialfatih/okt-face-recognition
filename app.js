@@ -43,6 +43,12 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
+// Snapshot absensi disimpan di luar project (hasil migrasi base64 -> file webp).
+// URL di DB berbentuk /storage/snapshots/2026/06/<id>.webp dan dipetakan ke folder fisik.
+const SNAPSHOT_STORAGE_ROOT = process.env.SNAPSHOT_STORAGE_ROOT
+    || '/home/rindang/Downloads/automasi/home/adish/_2026/fotoabsen';
+app.use('/storage', express.static(SNAPSHOT_STORAGE_ROOT));
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'rjs-face-dev-secret',
     resave: false,

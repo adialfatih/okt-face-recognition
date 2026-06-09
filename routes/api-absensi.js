@@ -172,6 +172,7 @@ router.get('/absensi/:id', async (req, res) => {
                 is_late,
                 menit_terlambat,
                 snapshot_base64,
+                snapshot_url,
                 created_at
             FROM table_absensi
             WHERE id = ?
@@ -219,7 +220,7 @@ router.get('/absensi/:id', async (req, res) => {
             let pair;
             if (shiftCode) {
                 const p = await q(
-                    `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
+                    `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                      WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Keluar%'
                      ORDER BY jam ASC
                      LIMIT 1`,
@@ -230,7 +231,7 @@ router.get('/absensi/:id', async (req, res) => {
                 const katKeluar = pasanganKeluar(r.kategori);
                 if (katKeluar) {
                     const p = await q(
-                        `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
+                        `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                          WHERE nrp=? AND tanggal=? AND kategori=?
                          ORDER BY jam ASC
                          LIMIT 1`,
@@ -253,7 +254,7 @@ router.get('/absensi/:id', async (req, res) => {
             let pair;
             if (shiftCode) {
                 const p = await q(
-                    `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
+                    `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                      WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Masuk%'
                      ORDER BY jam ASC
                      LIMIT 1`,
@@ -264,7 +265,7 @@ router.get('/absensi/:id', async (req, res) => {
                 const katMasuk = pasanganMasuk(r.kategori);
                 if (katMasuk) {
                     const p = await q(
-                        `SELECT id, jam, kategori, snapshot_base64, created_at FROM table_absensi
+                        `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                          WHERE nrp=? AND tanggal=? AND kategori=?
                          ORDER BY jam ASC
                          LIMIT 1`,
@@ -294,8 +295,9 @@ router.get('/absensi/:id', async (req, res) => {
                 jam_keluar: jamKeluar,
                 kategori_masuk: rowMasuk ? rowMasuk.kategori : null,
                 kategori_keluar: rowKeluar ? rowKeluar.kategori : null,
-                snapshot_masuk: rowMasuk ? rowMasuk.snapshot_base64 : null,
-                snapshot_keluar: rowKeluar ? rowKeluar.snapshot_base64 : null
+                // Utamakan file webp (snapshot_url); fallback ke base64 lama bila belum dimigrasi
+                snapshot_masuk: rowMasuk ? (rowMasuk.snapshot_url || rowMasuk.snapshot_base64) : null,
+                snapshot_keluar: rowKeluar ? (rowKeluar.snapshot_url || rowKeluar.snapshot_base64) : null
             }
         });
 
