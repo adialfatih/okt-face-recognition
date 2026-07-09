@@ -17,6 +17,8 @@
             <!-- Card -->
             <div class="card bg-white shadow-lg border border-sky-100">
                 <div class="card-body space-y-4">
+                    <div id="loginOfflineStatus"></div>
+                    <div id="loginOfflineMessage"></div>
 
                     <% if (typeof error !=='undefined' && error) { %>
                         <div class="alert alert-error py-2 text-sm">
@@ -27,7 +29,7 @@
                         </div>
                         <% } %>
 
-                            <form action="/login" method="post" class="space-y-4">
+                            <form action="/login" method="post" class="space-y-4" data-offline-login="true">
 
                                 <div class="form-control">
                                     <label class="label">
@@ -76,3 +78,4 @@
 
         </div>
     </section>
+    <script defer src="/public/js/login-offline-status.js"></script>

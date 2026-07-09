@@ -123,3 +123,8 @@
         </div>
 
     </section>
+    <script>
+        if ('serviceWorker' in navigator && navigator.onLine) {
+            fetch('/absensi/capture', { credentials: 'same-origin' }).catch(() => { });
+        }
+    </script>

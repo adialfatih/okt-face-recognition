@@ -42,6 +42,11 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
+app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('application/javascript');
+    res.sendFile(path.join(__dirname, 'public/sw.js'));
+});
 
 // Snapshot absensi disimpan di luar project (hasil migrasi base64 -> file webp).
 // URL di DB berbentuk /storage/snapshots/2026/06/<id>.webp dan dipetakan ke folder fisik.

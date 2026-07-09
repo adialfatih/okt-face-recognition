@@ -28,7 +28,7 @@
                 <%= currentUser.nama_lengkap %>
                     (<%= currentUser.hak_akses %>)
             </span>
-            <form action="/logout" method="post" class="inline">
+            <form action="/logout" method="post" class="inline" data-offline-logout="true">
                 <button type="submit"
                     class="btn btn-outline btn-xs sm:btn-sm border-sky-300 text-sky-700 hover:bg-sky-50">
                     <i class="fa-solid fa-right-from-bracket mr-1"></i>

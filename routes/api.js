@@ -905,5 +905,165 @@ router.get('/deteksi-log/summary', async (req, res) => {
 });
 
 
+// ==== OFFLINE SYNC ENDPOINTS ====
+
+// GET /api/health — health check untuk deteksi online/offline
+router.get('/health', (req, res) => {
+    res.json({ ok: true, time: Date.now() });
+});
+
+// GET /api/sync/manifest — cek versi data (untuk delta sync)
+router.get('/sync/manifest', async (req, res) => {
+    try {
+        const [embRow] = await q('SELECT COUNT(*) AS c, MAX(created_at) AS max_at FROM table_face_embeddings');
+        const [profRow] = await q('SELECT MAX(updated_at) AS max_at FROM table_karyawan_cache');
+        res.json({
+            ok: true,
+            embCount: Number(embRow?.c || 0),
+            embMaxAt: embRow?.max_at || null,
+            profileMaxAt: profRow?.max_at || null,
+            config: {
+                threshold: FACE_THRESHOLD,
+                marginMin: FACE_MARGIN_MIN,
+                kategori: KATEGORI,
+                shiftRules: SHIFT_RULES
+            }
+        });
+    } catch (e) {
+        console.error('[sync/manifest] fail:', e);
+        res.status(500).json({ ok: false, error: 'manifest-failed' });
+    }
+});
+
+// GET /api/sync/data — download semua embeddings + profiles + config untuk offline
+router.get('/sync/data', async (req, res) => {
+    try {
+        // 1) Embeddings (hanya nrp + array, tanpa snapshot blob)
+        const embRows = await q('SELECT nrp, embedding FROM table_face_embeddings');
+        const embeddings = embRows.map(r => ({
+            nrp: r.nrp,
+            emb: Array.isArray(r.embedding) ? r.embedding : JSON.parse(r.embedding)
+        }));
+
+        // 2) Profiles dari table_karyawan_cache. Pastikan setiap NRP yang punya embedding
+        // punya profil cache, supaya offline matching tidak berhenti di "no-profile".
+        const nrps = [...new Set(embRows.map(r => r.nrp).filter(Boolean))];
+        for (const nrp of nrps) {
+            await ensureInCache(nrp);
+        }
+
+        let profRows = [];
+        if (nrps.length) {
+            const placeholders = nrps.map(() => '?').join(',');
+            profRows = await q(
+                `SELECT nrp, nama, departement AS dep, divisi, jabatan, status
+                 FROM table_karyawan_cache
+                 WHERE nrp IN (${placeholders})`,
+                nrps
+            );
+        }
+
+        // 3) Config untuk matching & late computation di client
+        const config = {
+            threshold: FACE_THRESHOLD,
+            marginMin: FACE_MARGIN_MIN,
+            kategori: KATEGORI,
+            shiftRules: SHIFT_RULES
+        };
+
+        res.json({
+            ok: true,
+            embeddings,
+            profiles: profRows,
+            config,
+            syncedAt: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('[sync/data] fail:', e);
+        res.status(500).json({ ok: false, error: 'sync-data-failed' });
+    }
+});
+
+// POST /api/absen/sync — batch upload pending absensi offline (server menang)
+router.post('/absen/sync', async (req, res) => {
+    try {
+        const { items } = req.body;
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'No items' });
+        }
+
+        const results = [];
+        for (const item of items) {
+            const { nrp, kategori, tanggal, jam, frameBase64, clientId } = item;
+            try {
+                // Validasi kategori
+                if (!isValidKategori(kategori)) {
+                    results.push({ clientId, ok: false, reason: 'invalid-kategori' });
+                    continue;
+                }
+
+                // Ambil profil dari cache (re-validate NRP)
+                const info = await getProfilUI(nrp);
+                if (!info) {
+                    results.push({ clientId, ok: false, reason: 'no-profile' });
+                    continue;
+                }
+                if (!ACTIVE_STATUSES.has((info.status || '').toUpperCase())) {
+                    results.push({ clientId, ok: false, reason: 'inactive' });
+                    continue;
+                }
+
+                // Compute late flags berdasarkan timestamp client
+                const clientTime = dayjs(`${tanggal} ${jam}`);
+                const late = computeLateFlag(kategori, clientTime);
+                const lateMin = computeLateMinutes(kategori, clientTime);
+                const shiftCode = deriveShiftCode(kategori);
+
+                // Anti-dobel + insert (server menang: first-write-wins)
+                try {
+                    await q(
+                        `INSERT INTO table_absensi
+                          (nrp, tanggal, jam, kategori, shift_code,
+                           nama_snapshot, dep_snapshot, divisi_snapshot, jabatan_snapshot,
+                           is_late, menit_terlambat, snapshot_base64, source)
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                        [
+                            nrp, tanggal, jam, kategori, shiftCode,
+                            info.nama, info.dep, info.divisi, info.jabatan,
+                            late, lateMin, frameBase64 || null, 'offline-sync'
+                        ]
+                    );
+                } catch (e) {
+                    if (e.code === 'ER_DUP_ENTRY') {
+                        // Duplicate → server menang, skip
+                        results.push({ clientId, ok: false, reason: 'duplicate' });
+                        continue;
+                    }
+                    throw e;
+                }
+
+                // Log deteksi sukses
+                await q(
+                    'INSERT INTO table_deteksi_log (context, kategori, nrp_detected, status, frame_snapshot) VALUES (?,?,?,?,?)',
+                    [
+                        'absensi', kategori, nrp, 'recognized',
+                        frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
+                    ]
+                );
+
+                results.push({ clientId, ok: true });
+            } catch (e) {
+                console.error('[absen/sync] item fail:', e);
+                results.push({ clientId, ok: false, reason: 'error' });
+            }
+        }
+
+        res.json({ ok: true, results });
+    } catch (e) {
+        console.error('[absen/sync] fail:', e);
+        res.status(500).json({ ok: false, error: 'sync-failed' });
+    }
+});
+
 router.use(absensiRouter);
 module.exports = router;

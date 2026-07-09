@@ -9,6 +9,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.13/dist/full.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="/public/css/styles.css?v=3" />
+<link rel="manifest" href="/public/manifest" />
+<meta name="theme-color" content="#0284c7" />
 <link rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js@10.2.9/dist/css/autoComplete.01.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
@@ -17,5 +19,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.4"></script>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script defer src="/public/js/ui.js"></script>
+<script defer src="/public/js/offline-db.js"></script>
+<script defer src="/public/js/offline-session.js"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .catch(err => console.warn('[sw] register failed:', err));
+        });
+    }
+</script>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
