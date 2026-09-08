@@ -391,7 +391,9 @@
                                 // }
 
                                 if (bolehSimpan) {
-                                    const frame = FaceCommon.grabFrame(video);
+                                    // Foto rekam jadi referensi karyawan → resolusi
+                                    // dijaga lebih tinggi daripada snapshot absensi.
+                                    const frame = FaceCommon.grabFrame(video, { maxEdge: 960, quality: 0.82 });
                                     samples.push({
                                         embedding: Array.from(det.descriptor),
                                         snapshotBase64: frame,

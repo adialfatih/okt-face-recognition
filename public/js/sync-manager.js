@@ -57,8 +57,15 @@ const SyncManager = (function () {
         try {
             const resp = await fetch('/api/sync/data', {
                 method: 'GET',
-                cache: 'no-store'
+                cache: 'no-store',
+                credentials: 'same-origin'
             });
+            // Login offline tidak punya sesi server — data master memang hanya bisa
+            // di-refresh setelah login online. Bukan error yang perlu diteriakkan.
+            if (resp.status === 401) {
+                setStatus('idle');
+                return { ok: false, reason: 'unauthorized' };
+            }
             if (!resp.ok) throw new Error('sync-data-failed');
             const data = await resp.json();
             if (!data.ok) throw new Error('sync-data-error');
@@ -95,69 +102,109 @@ const SyncManager = (function () {
         }
     }
 
+    // Kirim per-batch kecil. Dulu SELURUH antrian dikirim dalam satu request; begitu
+    // antrian melewati ~10MB (limit express.json di server) request selalu dibalas 413,
+    // tidak ada satu pun baris terhapus, dan antrian macet permanen sambil terus tumbuh.
+    const UPLOAD_BATCH_SIZE = 5;
+    const MIN_BATCH_SIZE = 1;
+    const MAX_UPLOAD_ATTEMPTS = 3;
+
+    // Alasan yang tidak akan pernah berubah kalau dicoba ulang → langsung tandai gagal.
+    const PERMANENT_FAIL_REASONS = new Set(['no-profile', 'inactive', 'invalid-kategori']);
+
     /**
-     * Upload pending absensi ke server (batch).
+     * Upload pending absensi ke server, per-batch.
      * Server menang: first-write-wins, duplicate diabaikan.
      */
     async function uploadPending() {
         if (_syncing) return { ok: false, reason: 'already-syncing' };
         _syncing = true;
         setStatus('uploading');
+
+        let batchSize = UPLOAD_BATCH_SIZE;
+        let syncedCount = 0;
+        let totalCount = 0;
+
         try {
-            const pending = await OfflineDB.getPending();
-            const toSync = pending.filter(p => p.sync_status === 'pending');
-            if (toSync.length === 0) {
-                setStatus('idle');
-                _syncing = false;
-                return { ok: true, synced: 0 };
-            }
+            await OfflineDB.purgeFailedPending(7).catch(() => { });
 
-            const items = toSync.map(p => ({
-                clientId: String(p.id),
-                nrp: p.nrp,
-                kategori: p.kategori,
-                tanggal: p.tanggal,
-                jam: p.jam,
-                frameBase64: p.frameBase64 || null
-            }));
+            // Guard: tiap iterasi wajib membuat progres (hapus baris, tandai failed,
+            // atau naikkan attempts sampai batas). Batas iterasi hanya jaring pengaman.
+            for (let guard = 0; guard < 500; guard++) {
+                const batch = await OfflineDB.getPendingBatch(batchSize);
+                if (batch.length === 0) break;
 
-            const resp = await fetch('/api/absen/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items })
-            });
-            if (!resp.ok) throw new Error('upload-http-failed');
-            const data = await resp.json();
+                const items = batch.map(p => ({
+                    clientId: String(p.id),
+                    nrp: p.nrp,
+                    kategori: p.kategori,
+                    tanggal: p.tanggal,
+                    jam: p.jam,
+                    frameBase64: p.frameBase64 || null
+                }));
 
-            if (!data.ok) throw new Error('upload-failed');
+                const resp = await fetch('/api/absen/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ items })
+                });
 
-            // Proses hasil per item
-            let syncedCount = 0;
-            for (const r of data.results || []) {
-                const id = parseInt(r.clientId, 10);
-                if (!id) continue;
-                if (r.ok) {
-                    // Sukses → hapus dari pending
-                    await OfflineDB.deletePending(id);
-                    syncedCount++;
-                } else if (r.reason === 'duplicate') {
-                    // Server menang → hapus dari pending (sudah ada di server)
-                    await OfflineDB.deletePending(id);
-                    syncedCount++;
-                } else {
-                    // Gagal (no-profile, inactive, error) → tandai failed
-                    await OfflineDB.updatePendingStatus(id, 'failed');
+                // 413 = payload terlalu besar. Kecilkan batch dan coba lagi; kalau
+                // satu item saja masih kebesaran, item itu tidak akan pernah bisa
+                // dikirim → tandai gagal supaya tidak mengunci antrian.
+                if (resp.status === 413) {
+                    if (batchSize > MIN_BATCH_SIZE) {
+                        batchSize = Math.max(MIN_BATCH_SIZE, Math.floor(batchSize / 2));
+                        continue;
+                    }
+                    console.warn('[sync] item terlalu besar, ditandai gagal:', batch[0].id);
+                    await OfflineDB.markPendingFailed(batch[0].id);
+                    continue;
+                }
+
+                if (!resp.ok) throw new Error('upload-http-' + resp.status);
+                const data = await resp.json();
+                if (!data.ok) throw new Error('upload-failed');
+
+                totalCount += batch.length;
+                const seen = new Set();
+
+                for (const r of data.results || []) {
+                    const id = parseInt(r.clientId, 10);
+                    if (!id) continue;
+                    seen.add(id);
+
+                    if (r.ok || r.reason === 'duplicate') {
+                        // Sukses, atau server sudah punya datanya → hapus dari antrian.
+                        await OfflineDB.deletePending(id);
+                        syncedCount++;
+                    } else if (PERMANENT_FAIL_REASONS.has(r.reason)) {
+                        await OfflineDB.markPendingFailed(id);
+                    } else {
+                        // Error sementara → coba lagi nanti, sampai batas percobaan.
+                        const attempts = await OfflineDB.bumpPendingAttempt(id);
+                        if (attempts >= MAX_UPLOAD_ATTEMPTS) await OfflineDB.markPendingFailed(id);
+                    }
+                }
+
+                // Item yang tidak dibalas server sama sekali juga harus maju,
+                // kalau tidak batch yang sama akan diambil ulang tanpa henti.
+                for (const p of batch) {
+                    if (seen.has(p.id)) continue;
+                    const attempts = await OfflineDB.bumpPendingAttempt(p.id);
+                    if (attempts >= MAX_UPLOAD_ATTEMPTS) await OfflineDB.markPendingFailed(p.id);
                 }
             }
 
-            setStatus('uploaded');
-            _syncing = false;
-            return { ok: true, synced: syncedCount, total: toSync.length };
+            setStatus(syncedCount > 0 ? 'uploaded' : 'idle');
+            return { ok: true, synced: syncedCount, total: totalCount };
         } catch (e) {
             console.error('[sync] uploadPending fail:', e);
             setStatus('error');
+            return { ok: false, error: e.message, synced: syncedCount };
+        } finally {
             _syncing = false;
-            return { ok: false, error: e.message };
         }
     }
 

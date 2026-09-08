@@ -1,6 +1,26 @@
 const express = require('express');
+const dayjs = require('dayjs');
 const router = express.Router();
 const { q } = require('../db');
+
+function requireAuthorizationPassword(req, res) {
+    const configured = process.env.PASSWORD_OTORISASI;
+    if (!configured) {
+        res.status(500).json({ ok: false, error: 'PASSWORD_OTORISASI belum diset di .env' });
+        return false;
+    }
+
+    const supplied = req.body?.authorizationPassword
+        || req.get('x-authorization-password')
+        || '';
+
+    if (supplied !== configured) {
+        res.status(403).json({ ok: false, error: 'Password otorisasi salah' });
+        return false;
+    }
+
+    return true;
+}
 
 // Helper untuk shift_code (sama seperti di api.js sebelumnya)
 function deriveShiftCode(kategori) {
@@ -38,6 +58,95 @@ function pasanganMasuk(katKeluar) {
     if (katKeluar.includes('Driver')) return 'Masuk Driver';
     if (katKeluar.includes('Security')) return 'Masuk Security';
     return null;
+}
+
+function isOvernightAbsensi(kategori, shiftCode) {
+    const k = String(kategori || '').toLowerCase();
+    const sc = String(shiftCode || '').toUpperCase();
+    return sc === 'MALAM'
+        || k.includes('shift malam');
+}
+
+function isSecurityAbsensi(kategori, shiftCode) {
+    const k = String(kategori || '').toLowerCase();
+    const sc = String(shiftCode || '').toUpperCase();
+    return sc === 'SECURITY' || k.includes('security');
+}
+
+function nextDateYmd(tanggal) {
+    return dayjs(tanggal).add(1, 'day').format('YYYY-MM-DD');
+}
+
+function prevDateYmd(tanggal) {
+    return dayjs(tanggal).subtract(1, 'day').format('YYYY-MM-DD');
+}
+
+function pairKeluarTanggal(tanggalMasuk, kategoriMasuk, shiftCode) {
+    return isOvernightAbsensi(kategoriMasuk, shiftCode) ? nextDateYmd(tanggalMasuk) : dayjs(tanggalMasuk).format('YYYY-MM-DD');
+}
+
+function pairMasukTanggal(tanggalKeluar, kategoriKeluar, shiftCode) {
+    return isOvernightAbsensi(kategoriKeluar, shiftCode) ? prevDateYmd(tanggalKeluar) : dayjs(tanggalKeluar).format('YYYY-MM-DD');
+}
+
+function pairKeluarTanggalForInput(tanggalMasuk, jamMasuk, jamKeluar, kategoriMasuk, shiftCode) {
+    if (!isSecurityAbsensi(kategoriMasuk, shiftCode)) {
+        return pairKeluarTanggal(tanggalMasuk, kategoriMasuk, shiftCode);
+    }
+
+    if (!jamMasuk || !jamKeluar) return dayjs(tanggalMasuk).format('YYYY-MM-DD');
+    return jamKeluar <= jamMasuk ? nextDateYmd(tanggalMasuk) : dayjs(tanggalMasuk).format('YYYY-MM-DD');
+}
+
+const SECURITY_PAIR_MIN_MINUTES = 390; // 6 jam 30 menit, toleransi untuk shift 7 jam.
+const SECURITY_PAIR_MAX_HOURS = 18;
+
+async function findSecurityKeluar(rowMasuk) {
+    const rows = await q(
+        `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at
+         FROM table_absensi
+         WHERE nrp = ?
+           AND kategori = 'Keluar Security'
+           AND STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s')
+               > STR_TO_DATE(CONCAT(?, ' ', ?), '%Y-%m-%d %H:%i:%s')
+           AND STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s')
+               >= DATE_ADD(STR_TO_DATE(CONCAT(?, ' ', ?), '%Y-%m-%d %H:%i:%s'), INTERVAL ? MINUTE)
+           AND STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s')
+               <= DATE_ADD(STR_TO_DATE(CONCAT(?, ' ', ?), '%Y-%m-%d %H:%i:%s'), INTERVAL ? HOUR)
+         ORDER BY STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s') ASC
+         LIMIT 1`,
+        [
+            rowMasuk.nrp,
+            rowMasuk.tanggal, rowMasuk.jam,
+            rowMasuk.tanggal, rowMasuk.jam, SECURITY_PAIR_MIN_MINUTES,
+            rowMasuk.tanggal, rowMasuk.jam, SECURITY_PAIR_MAX_HOURS
+        ]
+    );
+    return rows[0] || null;
+}
+
+async function findSecurityMasuk(rowKeluar) {
+    const rows = await q(
+        `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at
+         FROM table_absensi
+         WHERE nrp = ?
+           AND kategori = 'Masuk Security'
+           AND STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s')
+               < STR_TO_DATE(CONCAT(?, ' ', ?), '%Y-%m-%d %H:%i:%s')
+           AND STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s')
+               <= DATE_SUB(STR_TO_DATE(CONCAT(?, ' ', ?), '%Y-%m-%d %H:%i:%s'), INTERVAL ? MINUTE)
+           AND STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s')
+               >= DATE_SUB(STR_TO_DATE(CONCAT(?, ' ', ?), '%Y-%m-%d %H:%i:%s'), INTERVAL ? HOUR)
+         ORDER BY STR_TO_DATE(CONCAT(tanggal, ' ', jam), '%Y-%m-%d %H:%i:%s') DESC
+         LIMIT 1`,
+        [
+            rowKeluar.nrp,
+            rowKeluar.tanggal, rowKeluar.jam,
+            rowKeluar.tanggal, rowKeluar.jam, SECURITY_PAIR_MIN_MINUTES,
+            rowKeluar.tanggal, rowKeluar.jam, SECURITY_PAIR_MAX_HOURS
+        ]
+    );
+    return rows[0] || null;
 }
 // GET /api/absensi/report
 router.get('/absensi/report', async (req, res) => {
@@ -103,7 +212,8 @@ router.get('/absensi/report', async (req, res) => {
 
         const whereSql = whereMasuk.length ? `WHERE ${whereMasuk.join(' AND ')}` : '';
 
-        // Pairing: a = Masuk, b = Keluar (shift_code sama & tanggal sama & nrp sama)
+        // Pairing: a = Masuk, b = Keluar.
+        // Shift malam keluar H+1. Security pakai urutan waktu aktual dalam window 18 jam.
         const sql = `
             SELECT
                 a.id              AS id_masuk,
@@ -131,13 +241,37 @@ router.get('/absensi/report', async (req, res) => {
                 END AS durasi_menit
             FROM table_absensi a
             LEFT JOIN table_absensi b
-                ON  b.nrp = a.nrp
-                AND b.tanggal = a.tanggal
-                AND (
-                        (a.shift_code IS NOT NULL AND b.shift_code IS NOT NULL AND b.shift_code = a.shift_code)
-                     OR (a.shift_code IS NULL AND b.shift_code IS NULL AND b.kategori LIKE 'Keluar%')
+                ON b.id = (
+                    SELECT bx.id
+                    FROM table_absensi bx
+                    WHERE bx.nrp = a.nrp
+                      AND bx.kategori LIKE 'Keluar%'
+                      AND (
+                            (a.shift_code IS NOT NULL AND bx.shift_code IS NOT NULL AND bx.shift_code = a.shift_code)
+                         OR (a.shift_code IS NULL AND bx.shift_code IS NULL)
+                      )
+                      AND (
+                            (
+                                (a.shift_code = 'SECURITY' OR a.kategori LIKE '%Security%')
+                                AND STR_TO_DATE(CONCAT(bx.tanggal, ' ', bx.jam), '%Y-%m-%d %H:%i:%s')
+                                    > STR_TO_DATE(CONCAT(a.tanggal, ' ', a.jam), '%Y-%m-%d %H:%i:%s')
+                                AND STR_TO_DATE(CONCAT(bx.tanggal, ' ', bx.jam), '%Y-%m-%d %H:%i:%s')
+                                    >= DATE_ADD(STR_TO_DATE(CONCAT(a.tanggal, ' ', a.jam), '%Y-%m-%d %H:%i:%s'), INTERVAL ${SECURITY_PAIR_MIN_MINUTES} MINUTE)
+                                AND STR_TO_DATE(CONCAT(bx.tanggal, ' ', bx.jam), '%Y-%m-%d %H:%i:%s')
+                                    <= DATE_ADD(STR_TO_DATE(CONCAT(a.tanggal, ' ', a.jam), '%Y-%m-%d %H:%i:%s'), INTERVAL ${SECURITY_PAIR_MAX_HOURS} HOUR)
+                            )
+                         OR (
+                                NOT (a.shift_code = 'SECURITY' OR a.kategori LIKE '%Security%')
+                                AND bx.tanggal = CASE
+                                    WHEN (a.shift_code = 'MALAM' OR a.kategori LIKE '%Shift Malam%')
+                                    THEN DATE_ADD(a.tanggal, INTERVAL 1 DAY)
+                                    ELSE a.tanggal
+                                END
+                            )
+                      )
+                    ORDER BY STR_TO_DATE(CONCAT(bx.tanggal, ' ', bx.jam), '%Y-%m-%d %H:%i:%s') ASC
+                    LIMIT 1
                 )
-                AND b.kategori LIKE 'Keluar%'
             ${whereSql}
             ORDER BY a.tanggal DESC, a.jam ASC
             LIMIT 1000
@@ -216,26 +350,30 @@ router.get('/absensi/:id', async (req, res) => {
         if ((r.kategori || '').startsWith('Masuk')) {
             jamMasuk = r.jam;
 
-            // Cari pasangan Keluar
             let pair;
-            if (shiftCode) {
+            if (isSecurityAbsensi(r.kategori, shiftCode)) {
+                pair = await findSecurityKeluar(r);
+            } else if (shiftCode) {
+                // Cari pasangan Keluar. Shift malam keluar H+1 dari tanggal masuk.
+                const tanggalKeluar = pairKeluarTanggal(r.tanggal, r.kategori, shiftCode);
                 const p = await q(
                     `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                      WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Keluar%'
                      ORDER BY jam ASC
                      LIMIT 1`,
-                    [r.nrp, r.tanggal, shiftCode]
+                    [r.nrp, tanggalKeluar, shiftCode]
                 );
                 pair = p[0];
             } else {
                 const katKeluar = pasanganKeluar(r.kategori);
                 if (katKeluar) {
+                    const tanggalKeluar = pairKeluarTanggal(r.tanggal, r.kategori, shiftCode);
                     const p = await q(
                         `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                          WHERE nrp=? AND tanggal=? AND kategori=?
                          ORDER BY jam ASC
                          LIMIT 1`,
-                        [r.nrp, r.tanggal, katKeluar]
+                        [r.nrp, tanggalKeluar, katKeluar]
                     );
                     pair = p[0];
                 }
@@ -250,26 +388,30 @@ router.get('/absensi/:id', async (req, res) => {
         } else if ((r.kategori || '').startsWith('Keluar')) {
             jamKeluar = r.jam;
 
-            // Cari pasangan Masuk
             let pair;
-            if (shiftCode) {
+            if (isSecurityAbsensi(r.kategori, shiftCode)) {
+                pair = await findSecurityMasuk(r);
+            } else if (shiftCode) {
+                // Cari pasangan Masuk. Untuk keluar shift malam, masuk ada H-1.
+                const tanggalMasuk = pairMasukTanggal(r.tanggal, r.kategori, shiftCode);
                 const p = await q(
                     `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                      WHERE nrp=? AND tanggal=? AND shift_code=? AND kategori LIKE 'Masuk%'
                      ORDER BY jam ASC
                      LIMIT 1`,
-                    [r.nrp, r.tanggal, shiftCode]
+                    [r.nrp, tanggalMasuk, shiftCode]
                 );
                 pair = p[0];
             } else {
                 const katMasuk = pasanganMasuk(r.kategori);
                 if (katMasuk) {
+                    const tanggalMasuk = pairMasukTanggal(r.tanggal, r.kategori, shiftCode);
                     const p = await q(
                         `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at FROM table_absensi
                          WHERE nrp=? AND tanggal=? AND kategori=?
                          ORDER BY jam ASC
                          LIMIT 1`,
-                        [r.nrp, r.tanggal, katMasuk]
+                        [r.nrp, tanggalMasuk, katMasuk]
                     );
                     pair = p[0];
                 }
@@ -310,6 +452,8 @@ router.get('/absensi/:id', async (req, res) => {
 // PUT /api/absensi/pair/:id  → edit satu paket absensi (Masuk + optional Keluar)
 router.put('/absensi/pair/:id', async (req, res) => {
     try {
+        if (!requireAuthorizationPassword(req, res)) return;
+
         const id = parseInt(req.params.id || '0', 10);
         if (!id) return res.status(400).json({ ok: false, error: 'invalid-id' });
 
@@ -339,7 +483,10 @@ router.put('/absensi/pair/:id', async (req, res) => {
         let keluar = null;
 
         // Cari pasangan KELUAR (kalau ada)
-        if (shiftCode) {
+        if (isSecurityAbsensi(masuk.kategori, shiftCode)) {
+            keluar = await findSecurityKeluar(masuk);
+        } else if (shiftCode) {
+            const tanggalKeluarExisting = pairKeluarTanggal(masuk.tanggal, masuk.kategori, shiftCode);
             const listKeluar = await q(
                 `SELECT *
                  FROM table_absensi
@@ -349,12 +496,13 @@ router.put('/absensi/pair/:id', async (req, res) => {
                    AND kategori LIKE 'Keluar%'
                  ORDER BY jam ASC
                  LIMIT 1`,
-                [masuk.nrp, masuk.tanggal, shiftCode]
+                [masuk.nrp, tanggalKeluarExisting, shiftCode]
             );
             keluar = listKeluar[0] || null;
         } else {
             const katKeluar = pasanganKeluar(masuk.kategori || '');
             if (katKeluar) {
+                const tanggalKeluarExisting = pairKeluarTanggal(masuk.tanggal, masuk.kategori, shiftCode);
                 const listKeluar = await q(
                     `SELECT *
                      FROM table_absensi
@@ -363,11 +511,13 @@ router.put('/absensi/pair/:id', async (req, res) => {
                        AND kategori = ?
                      ORDER BY jam ASC
                      LIMIT 1`,
-                    [masuk.nrp, masuk.tanggal, katKeluar]
+                    [masuk.nrp, tanggalKeluarExisting, katKeluar]
                 );
                 keluar = listKeluar[0] || null;
             }
         }
+
+        const tanggalKeluarBaru = pairKeluarTanggalForInput(tanggal, jamMasuk, jamKeluar, masuk.kategori, shiftCode);
 
         // 1) UPDATE baris MASUK (tanggal + jam)
         await q(
@@ -386,7 +536,7 @@ router.put('/absensi/pair/:id', async (req, res) => {
                     `UPDATE table_absensi
                      SET tanggal = ?, jam = ?
                      WHERE id = ?`,
-                    [tanggal, jamKeluar, keluar.id]
+                    [tanggalKeluarBaru, jamKeluar, keluar.id]
                 );
             } else {
                 // INSERT baris keluar baru
@@ -401,7 +551,7 @@ router.put('/absensi/pair/:id', async (req, res) => {
                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
                     [
                         masuk.nrp,
-                        tanggal,
+                        tanggalKeluarBaru,
                         jamKeluar,
                         kategoriKeluar,
                         sc,
@@ -433,6 +583,8 @@ router.put('/absensi/pair/:id', async (req, res) => {
 // DELETE /api/absensi/pair/:id  → hapus satu paket absensi (Masuk + Keluar)
 router.delete('/absensi/pair/:id', async (req, res) => {
     try {
+        if (!requireAuthorizationPassword(req, res)) return;
+
         const id = parseInt(req.params.id || '0', 10);
         if (!id) return res.status(400).json({ ok: false, error: 'invalid-id' });
 
@@ -449,22 +601,59 @@ router.delete('/absensi/pair/:id', async (req, res) => {
 
         const base = rowsBase[0];
         const shiftCode = base.shift_code || deriveShiftCode(base.kategori || '');
+        if (isSecurityAbsensi(base.kategori, shiftCode)) {
+            const pair = String(base.kategori || '').startsWith('Masuk')
+                ? await findSecurityKeluar(base)
+                : await findSecurityMasuk(base);
+            const ids = [base.id, pair?.id].filter(Boolean);
+            const placeholders = ids.map(() => '?').join(',');
+            const list = await q(
+                `SELECT id, kategori, jam
+                 FROM table_absensi
+                 WHERE id IN (${placeholders})`,
+                ids
+            );
+            await q(
+                `DELETE FROM table_absensi
+                 WHERE id IN (${placeholders})`,
+                ids
+            );
+            return res.json({
+                ok: true,
+                deleted: list.length,
+                base
+            });
+        }
+
+        const isMasuk = String(base.kategori || '').startsWith('Masuk');
+        const tanggalMasuk = isMasuk
+            ? dayjs(base.tanggal).format('YYYY-MM-DD')
+            : pairMasukTanggal(base.tanggal, base.kategori, shiftCode);
+        const tanggalKeluar = isMasuk
+            ? pairKeluarTanggal(base.tanggal, base.kategori, shiftCode)
+            : dayjs(base.tanggal).format('YYYY-MM-DD');
 
         let whereSql = '';
         let params = [];
 
         if (shiftCode) {
             // Paket berdasarkan shift_code
-            whereSql = `nrp = ? AND tanggal = ? AND shift_code = ?`;
-            params = [base.nrp, base.tanggal, shiftCode];
+            whereSql = `nrp = ? AND shift_code = ? AND (
+                (kategori LIKE 'Masuk%' AND tanggal = ?)
+                OR (kategori LIKE 'Keluar%' AND tanggal = ?)
+            )`;
+            params = [base.nrp, shiftCode, tanggalMasuk, tanggalKeluar];
         } else {
             // Paket berdasarkan pasangan kategori
             const kat = base.kategori || '';
             if (kat.startsWith('Masuk')) {
                 const katKeluar = pasanganKeluar(kat);
                 if (katKeluar) {
-                    whereSql = `nrp = ? AND tanggal = ? AND kategori IN (?,?)`;
-                    params = [base.nrp, base.tanggal, kat, katKeluar];
+                    whereSql = `nrp = ? AND (
+                        (tanggal = ? AND kategori = ?)
+                        OR (tanggal = ? AND kategori = ?)
+                    )`;
+                    params = [base.nrp, tanggalMasuk, kat, tanggalKeluar, katKeluar];
                 } else {
                     whereSql = `id = ?`;
                     params = [base.id];
@@ -472,8 +661,11 @@ router.delete('/absensi/pair/:id', async (req, res) => {
             } else if (kat.startsWith('Keluar')) {
                 const katMasuk = pasanganMasuk(kat);
                 if (katMasuk) {
-                    whereSql = `nrp = ? AND tanggal = ? AND kategori IN (?,?)`;
-                    params = [base.nrp, base.tanggal, katMasuk, kat];
+                    whereSql = `nrp = ? AND (
+                        (tanggal = ? AND kategori = ?)
+                        OR (tanggal = ? AND kategori = ?)
+                    )`;
+                    params = [base.nrp, tanggalMasuk, katMasuk, tanggalKeluar, kat];
                 } else {
                     whereSql = `id = ?`;
                     params = [base.id];

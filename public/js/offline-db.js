@@ -193,46 +193,145 @@ const OfflineDB = (function () {
     }
 
     // --- Pending absensi ---
+    //
+    // CATATAN MEMORI: setiap baris `pending` membawa `frameBase64` (foto absensi).
+    // Semua akses di bawah ini WAJIB lewat index/cursor, jangan `getAll('pending')`,
+    // karena getAll menarik seluruh foto ke memori sekaligus dan itulah penyebab
+    // renderer Chrome crash ("Aw, Snap") begitu antrian menumpuk.
+
     async function addPending(item) {
         // item: { nrp, kategori, tanggal, jam, frameBase64 }
         const row = {
             ...item,
             sync_status: 'pending',
+            attempts: 0,
             created_at: new Date().toISOString()
         };
         return put('pending', row);
     }
 
-    async function getPending() {
-        const rows = await getAll('pending');
-        return rows.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    /**
+     * Ambil maksimal `limit` baris berstatus 'pending' (urut id = kronologis).
+     * Dipakai untuk upload per-batch supaya body request tidak menembus limit server.
+     */
+    async function getPendingBatch(limit = 5) {
+        const store = await tx('pending');
+        return new Promise((resolve, reject) => {
+            const out = [];
+            const req = store.index('sync_status').openCursor(IDBKeyRange.only('pending'));
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (!cursor || out.length >= limit) return resolve(out);
+                out.push(cursor.value);
+                cursor.continue();
+            };
+            req.onerror = () => reject(req.error);
+        });
     }
 
+    /** Hitung antrian lewat index — tidak menyentuh body/foto sama sekali. */
     async function getPendingCount() {
-        const rows = await getAll('pending');
-        return rows.filter(p => p.sync_status === 'pending').length;
+        const store = await tx('pending');
+        return new Promise((resolve, reject) => {
+            const req = store.index('sync_status').count(IDBKeyRange.only('pending'));
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function updatePendingRow(id, mutate) {
+        return open().then(db => new Promise((resolve, reject) => {
+            const t = db.transaction('pending', 'readwrite');
+            const req = t.objectStore('pending').openCursor(IDBKeyRange.only(id));
+            let result = null;
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (!cursor) return;
+                result = mutate({ ...cursor.value });
+                if (result) cursor.update(result);
+            };
+            t.oncomplete = () => resolve(result);
+            t.onerror = () => reject(t.error);
+        }));
     }
 
     async function updatePendingStatus(id, status) {
-        const item = await get('pending', id);
-        if (!item) return;
-        item.sync_status = status;
-        return put('pending', item);
+        return updatePendingRow(id, (row) => ({ ...row, sync_status: status }));
+    }
+
+    /**
+     * Tandai gagal permanen. Foto dibuang sekaligus: baris ini tidak akan pernah
+     * dikirim ulang, jadi menahan base64-nya cuma memakan memori & storage.
+     */
+    async function markPendingFailed(id) {
+        return updatePendingRow(id, (row) => ({
+            ...row,
+            sync_status: 'failed',
+            frameBase64: null,
+            failed_at: new Date().toISOString()
+        }));
+    }
+
+    /** Naikkan counter percobaan; kembalikan jumlah percobaan terbaru. */
+    async function bumpPendingAttempt(id) {
+        const row = await updatePendingRow(id, (r) => ({
+            ...r,
+            attempts: Number(r.attempts || 0) + 1
+        }));
+        return row ? Number(row.attempts || 0) : 0;
     }
 
     async function deletePending(id) {
         return del('pending', id);
     }
 
+    /**
+     * Buang baris 'failed' yang sudah lewat `maxAgeDays`. Tanpa ini store `pending`
+     * hanya bisa membesar seumur hidup instalasi PWA.
+     */
+    async function purgeFailedPending(maxAgeDays = 7) {
+        const cutoff = Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000);
+        const db = await open();
+        return new Promise((resolve, reject) => {
+            const t = db.transaction('pending', 'readwrite');
+            const req = t.objectStore('pending').index('sync_status').openCursor(IDBKeyRange.only('failed'));
+            let removed = 0;
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (!cursor) return;
+                const stamp = Date.parse(cursor.value.failed_at || cursor.value.created_at || '');
+                if (!Number.isFinite(stamp) || stamp < cutoff) {
+                    cursor.delete();
+                    removed++;
+                }
+                cursor.continue();
+            };
+            t.oncomplete = () => resolve(removed);
+            t.onerror = () => reject(t.error);
+        });
+    }
+
+    /**
+     * Cek anti-dobel lokal lewat index gabungan [nrp, tanggal, kategori].
+     * Foto sengaja tidak ikut dikembalikan — pemanggil hanya butuh cek keberadaan.
+     */
     async function getPendingByNrpTanggalKategori(nrp, tanggal, kategori) {
-        // Cek anti-dobel lokal
-        const all = await getAll('pending');
-        return all.find(p =>
-            p.nrp === nrp &&
-            p.tanggal === tanggal &&
-            p.kategori === kategori &&
-            p.sync_status !== 'failed'
-        );
+        const store = await tx('pending');
+        return new Promise((resolve, reject) => {
+            const range = IDBKeyRange.only([nrp, tanggal, kategori]);
+            const req = store.index('nrp_tanggal_kategori').openCursor(range);
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (!cursor) return resolve(undefined);
+                const row = cursor.value;
+                if (row.sync_status !== 'failed') {
+                    const { frameBase64, ...rest } = row;
+                    return resolve(rest);
+                }
+                cursor.continue();
+            };
+            req.onerror = () => reject(req.error);
+        });
     }
 
     return {
@@ -248,7 +347,8 @@ const OfflineDB = (function () {
         // profiles
         replaceProfiles, getProfile,
         // pending
-        addPending, getPending, getPendingCount,
-        updatePendingStatus, deletePending, getPendingByNrpTanggalKategori
+        addPending, getPendingBatch, getPendingCount,
+        updatePendingStatus, markPendingFailed, bumpPendingAttempt,
+        deletePending, purgeFailedPending, getPendingByNrpTanggalKategori
     };
 })();

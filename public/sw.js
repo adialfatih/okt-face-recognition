@@ -6,9 +6,31 @@
  *  - Network-first untuk halaman dan API GET
  *  - POST absensi offline tetap ditangani client-side oleh IndexedDB
  */
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = `okt-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `okt-runtime-${CACHE_VERSION}`;
+
+// CDN yang wajib tersedia offline. Di-fetch eksplisit dengan mode CORS supaya
+// response-nya bukan opaque: response opaque tidak bisa divalidasi dan dihitung
+// dengan padding besar (~7MB/entri) terhadap kuota storage browser.
+const CDN_PRECACHE_URLS = [
+    'https://cdn.tailwindcss.com/',
+    'https://cdn.jsdelivr.net/npm/daisyui@4.12.13/dist/full.min.css',
+    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.4',
+    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css'
+];
+
+// Hanya origin CDN yang dikenal yang boleh masuk runtime cache. Request
+// cross-origin lain dibiarkan ditangani browser (tidak di-intercept sama sekali).
+const CDN_ORIGINS = new Set([
+    'https://cdn.tailwindcss.com',
+    'https://cdn.jsdelivr.net',
+    'https://cdnjs.cloudflare.com',
+    'https://cdn.datatables.net',
+    'https://fonts.googleapis.com',
+    'https://fonts.gstatic.com'
+]);
 
 const PRECACHE_URLS = [
     '/public/css/styles.css?v=3',
@@ -84,12 +106,44 @@ function offlineAbsensiPage() {
     });
 }
 
+function offlineFallbackPage() {
+    return new Response(`<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline</title>
+</head>
+<body style="font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f9ff;color:#0c4a6e">
+  <div style="text-align:center;padding:24px;max-width:420px">
+    <div style="font-size:44px;margin-bottom:8px">📴</div>
+    <h1 style="font-size:20px;margin:0 0 8px">Halaman ini belum tersedia offline</h1>
+    <p style="font-size:14px;opacity:.8;margin:0 0 20px">Sambungkan ke jaringan, atau buka menu Absensi yang bisa dipakai tanpa koneksi.</p>
+    <a href="/absensi" style="display:inline-block;background:#0284c7;color:#fff;text-decoration:none;padding:10px 18px;border-radius:9999px;font-size:14px">Buka Absensi Offline</a>
+  </div>
+</body>
+</html>`, {
+        status: 503,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    });
+}
+
 self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(STATIC_CACHE)
-            .then(cache => cache.addAll(PRECACHE_URLS))
-            .then(() => self.skipWaiting())
-    );
+    event.waitUntil((async () => {
+        const cache = await caches.open(STATIC_CACHE);
+        // Aset lokal wajib ada — kalau gagal, install memang harus gagal.
+        await cache.addAll(PRECACHE_URLS);
+        // CDN best-effort: satu CDN down tidak boleh menggagalkan seluruh install.
+        await Promise.all(CDN_PRECACHE_URLS.map(async (url) => {
+            try {
+                const resp = await fetch(url, { mode: 'cors', credentials: 'omit' });
+                if (resp.ok) await cache.put(url, resp);
+            } catch (e) {
+                console.warn('[sw] precache CDN gagal:', url, e && e.message);
+            }
+        }));
+        await self.skipWaiting();
+    })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -104,47 +158,108 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+/**
+ * Simpan ke cache tanpa memblokir response ke halaman.
+ *
+ * Response yang TIDAK boleh masuk cache:
+ *  - `redirected` → kalau disajikan ulang untuk request navigasi, Chrome menolaknya
+ *    (ERR_FAILED) dan PWA gagal dibuka sama sekali
+ *  - opaque / opaqueredirect → tidak bisa divalidasi & memakan kuota dengan padding
+ *  - no-store / non-2xx
+ *
+ * Clone diambil sinkron (sebelum body sempat dibaca pemanggil), lalu put-nya async
+ * dengan catch supaya kegagalan kuota tidak jadi unhandled rejection yang tak terlihat.
+ */
+function safeCachePut(cacheName, key, resp) {
+    if (!resp || !resp.ok || resp.redirected) return;
+    if (resp.type === 'opaque' || resp.type === 'opaqueredirect') return;
+    if ((resp.headers.get('Cache-Control') || '').includes('no-store')) return;
+
+    let copy;
+    try {
+        copy = resp.clone();
+    } catch (e) {
+        return;
+    }
+    caches.open(cacheName)
+        .then(cache => cache.put(key, copy))
+        .catch(e => console.warn('[sw] cache put dilewati:', e && e.message));
+}
+
 async function cacheFirst(req) {
     const cached = await caches.match(req);
     if (cached) return cached;
 
     const resp = await fetch(req);
-    if (resp && (resp.ok || resp.type === 'opaque')) {
-        const cache = await caches.open(RUNTIME_CACHE);
-        cache.put(req, resp.clone());
-    }
+    safeCachePut(RUNTIME_CACHE, req, resp);
     return resp;
 }
 
-async function networkFirst(req, fallbackUrl) {
+async function networkFirst(req) {
     try {
         const resp = await fetch(req);
-        if (resp && (resp.ok || resp.type === 'opaque')) {
-            const cache = await caches.open(RUNTIME_CACHE);
-            cache.put(req, resp.clone());
-            const url = new URL(req.url);
-            if (url.origin === self.location.origin && url.pathname === '/absensi/capture') {
-                cache.put('/absensi/capture', resp.clone());
-            }
-        }
+        safeCachePut(RUNTIME_CACHE, req, resp);
         return resp;
     } catch (e) {
         const cached = await caches.match(req);
         if (cached) return cached;
-        const url = new URL(req.url);
-        if (url.origin === self.location.origin && url.pathname === '/absensi') {
-            return offlineAbsensiPage();
-        }
-        if (url.origin === self.location.origin && url.pathname === '/absensi/capture') {
-            const genericCapture = await caches.match('/absensi/capture');
-            if (genericCapture) return genericCapture;
-        }
-        if (fallbackUrl) {
-            const fallback = await caches.match(fallbackUrl);
-            if (fallback) return fallback;
-        }
-        return new Response('Offline', { status: 503, statusText: 'Offline' });
+        return new Response(JSON.stringify({ ok: false, error: 'offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+        });
     }
+}
+
+/**
+ * Handler khusus request navigasi (buka PWA, klik link, reload).
+ *
+ * Kasus yang dulu bikin PWA tidak bisa dibuka: `start_url` = '/', dan '/' ada di
+ * balik ensureAuth. Begitu sesi server habis, '/' me-redirect ke '/login'. `fetch()`
+ * mengikuti redirect itu, hasilnya response ber-flag `redirected` yang (a) tidak
+ * boleh disajikan untuk navigasi dan (b) dulu ikut ter-cache dengan key '/',
+ * sehingga error-nya menetap sampai storage dibersihkan manual.
+ *
+ * Sekarang redirect diteruskan sebagai response 302 baru agar browser sendiri yang
+ * menavigasi ke URL tujuan, dan tidak pernah disimpan ke cache.
+ */
+async function navigationHandler(req) {
+    try {
+        const resp = await fetch(req);
+
+        if (resp.redirected) {
+            if (resp.body) resp.body.cancel().catch(() => { });
+            return Response.redirect(resp.url, 302);
+        }
+
+        safeCachePut(RUNTIME_CACHE, req, resp);
+        const url = new URL(req.url);
+        if (url.origin === self.location.origin && url.pathname === '/absensi/capture') {
+            safeCachePut(RUNTIME_CACHE, '/absensi/capture', resp);
+        }
+        return resp;
+    } catch (e) {
+        return navigationFallback(req);
+    }
+}
+
+async function navigationFallback(req) {
+    const url = new URL(req.url);
+
+    const cached = await caches.match(req);
+    if (cached && !cached.redirected) return cached;
+
+    if (url.origin === self.location.origin && url.pathname === '/absensi') {
+        return offlineAbsensiPage();
+    }
+    if (url.origin === self.location.origin && url.pathname === '/absensi/capture') {
+        const genericCapture = await caches.match('/absensi/capture');
+        if (genericCapture) return genericCapture;
+    }
+
+    const root = await caches.match('/');
+    if (root && !root.redirected) return root;
+
+    return offlineFallbackPage();
 }
 
 async function networkOnly(req) {
@@ -160,12 +275,30 @@ async function networkOnly(req) {
 
 self.addEventListener('fetch', (event) => {
     const req = event.request;
-    const url = new URL(req.url);
 
     if (req.method !== 'GET') return;
 
+    let url;
+    try {
+        url = new URL(req.url);
+    } catch (e) {
+        return;
+    }
+    // Abaikan skema non-http (chrome-extension:, blob:, dll) — Cache API menolaknya.
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+    // Navigasi ditangani lebih dulu; mode 'navigate' bisa muncul lintas origin juga.
+    if (req.mode === 'navigate') {
+        event.respondWith(navigationHandler(req));
+        return;
+    }
+
     if (url.origin !== self.location.origin) {
-        event.respondWith(cacheFirst(req));
+        // Selain CDN yang dikenal, jangan di-intercept: biarkan browser yang urus
+        // supaya response opaque tidak menumpuk di cache dan menghabiskan kuota.
+        if (CDN_ORIGINS.has(url.origin)) {
+            event.respondWith(cacheFirst(req));
+        }
         return;
     }
 
@@ -175,7 +308,9 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (url.pathname.startsWith('/api/')) {
-        if (url.pathname === '/api/health' || url.pathname === '/api/sync/manifest') {
+        // /api/health adalah probe liveness — TIDAK boleh di-cache, karena versi
+        // cache-nya akan membalas ok:true saat offline dan merusak deteksi online.
+        if (url.pathname === '/api/sync/manifest') {
             event.respondWith(networkFirst(req));
         } else {
             event.respondWith(networkOnly(req));
@@ -183,17 +318,18 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Foto snapshot absensi: besar dan hanya dipakai di laporan (online).
+    // Biarkan browser yang urus supaya tidak menggelembungkan cache.
+    if (url.pathname.startsWith('/storage/')) return;
+
     if (url.pathname.startsWith('/public/')) {
         event.respondWith(cacheFirst(req));
         return;
     }
 
-    if (req.mode === 'navigate') {
-        event.respondWith(networkFirst(req, '/'));
-        return;
-    }
-
-    event.respondWith(cacheFirst(req));
+    // Sisanya (halaman HTML yang di-prefetch, dll): utamakan jaringan supaya tidak
+    // menyajikan HTML basi setelah deploy, dengan cache sebagai cadangan offline.
+    event.respondWith(networkFirst(req));
 });
 
 self.addEventListener('message', (event) => {

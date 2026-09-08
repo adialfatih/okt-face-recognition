@@ -323,17 +323,12 @@
         return diffMin > 0 ? diffMin : 0;
     }
 
-    async function loop() {
+    async function processFrame() {
         try {
-            const now = performance.now();
-            let detections = [];
-            if (now - lastDet >= DET_MS) {
-                detections = await faceapi
-                    .detectAllFaces(video, DET_OPTS)
-                    .withFaceLandmarks()
-                    .withFaceDescriptors();
-                lastDet = now;
-            }
+            const detections = await faceapi
+                .detectAllFaces(video, DET_OPTS)
+                .withFaceLandmarks()
+                .withFaceDescriptors();
 
             // gambar bbox/landmarks yang sudah di-resize
             FaceCommon.drawWithResize(video, canvas, detections);
@@ -385,7 +380,9 @@
 
                         if (readyToSend) {
                             pending = true;
-                            const frame = FaceCommon.grabFrame(video);
+                            // Snapshot absensi hanya untuk verifikasi visual di laporan;
+                            // 640px sudah cukup dan ~10x lebih ringan dari frame penuh.
+                            const frame = FaceCommon.grabFrame(video, { maxEdge: 640, quality: 0.72 });
                             let resp;
 
                             // ==== OFFLINE-FIRST STRATEGY ====
@@ -475,6 +472,20 @@
             }
         } catch (err) {
             console.error('[absensi] error', err);
+        }
+    }
+
+    // Throttle dipindah ke level loop: deteksi DAN seluruh pemrosesan frame kini
+    // jalan sekali per DET_MS. Versi lama menjalankan blok pemrosesan di setiap
+    // frame rAF dengan detections kosong, sehingga cabang "tidak ada wajah"
+    // mereset sampleBuffer terus-menerus dan MIN_SAMPLES tidak pernah tercapai
+    // di perangkat yang deteksinya lebih cepat dari 220ms. Sekaligus memangkas
+    // pekerjaan canvas dari ~60fps ke ~4.5fps.
+    async function loop() {
+        const now = performance.now();
+        if (now - lastDet >= DET_MS) {
+            lastDet = now;
+            await processFrame();
         }
         requestAnimationFrame(loop);
     }

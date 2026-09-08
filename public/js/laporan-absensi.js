@@ -493,15 +493,14 @@
                 cancelButtonText: 'Batal'
             });
 
-            // Password hardcode. Silakan ubah sesuai keinginan Bos.
-            if (passwordEdit !== 'jangkrik15') {
-                if (passwordEdit) { // Munculkan error jika diisi salah (bukan karena klik batal)
-                    Swal.fire({ icon: 'error', title: 'Ditolak', text: 'Password salah!' });
-                }
+            if (!passwordEdit) {
                 return;
             }
 
-            const payload = result.value;
+            const payload = {
+                ...result.value,
+                authorizationPassword: passwordEdit
+            };
 
             const respSave = await fetch('/api/absensi/pair/' + encodeURIComponent(id), {
                 method: 'PUT',
@@ -605,17 +604,17 @@
                 cancelButtonText: 'Batal'
             });
 
-            // Password hardcode.
-            if (passwordDel !== 'jangkrik15') {
-                if (passwordDel) {
-                    Swal.fire({ icon: 'error', title: 'Ditolak', text: 'Password salah!' });
-                }
+            if (!passwordDel) {
                 return;
             }
 
             const respDel = await fetch('/api/absensi/pair/' + encodeURIComponent(id), {
                 method: 'DELETE',
-                credentials: 'same-origin'
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ authorizationPassword: passwordDel })
             });
             const delJson = await respDel.json();
 

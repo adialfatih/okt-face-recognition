@@ -59,6 +59,21 @@ function euclideanDistance(a, b) {
 
 function isValidKategori(k) { return KATEGORI.includes(k); }
 
+function isActiveKaryawanStatus(status, statusIo) {
+    const s = String(status ?? '').trim().toUpperCase();
+    const io = statusIo == null ? null : String(statusIo).trim();
+
+    if (io === '0') return false;
+    if (['RESIGN', 'KELUAR', 'NONAKTIF', 'NON-AKTIF', 'HABIS KONTRAK'].includes(s)) return false;
+    if (ACTIVE_STATUSES.has(s)) return true;
+
+    // table_karyawan lokal lama memakai status 1/0.
+    if (s === '1' || s === 'AKTIF') return true;
+    if (s === '0') return false;
+
+    return io === '1';
+}
+
 
 // --- Utilities ---
 function getNow() {
@@ -84,6 +99,60 @@ function deriveShiftCode(kategori) {
     if (k.includes('ijin keluar')) return 'IJIN';
 
     return null;
+}
+
+function pasanganMasuk(katKeluar) {
+    if (!katKeluar) return null;
+    if (katKeluar.includes('Shift Pagi')) return 'Masuk Shift Pagi';
+    if (katKeluar.includes('Shift Siang')) return 'Masuk Shift Siang';
+    if (katKeluar.includes('Shift Malam')) return 'Masuk Shift Malam';
+    if (katKeluar.includes('DS')) return 'Masuk DS';
+    if (katKeluar.includes('Driver')) return 'Masuk Driver';
+    if (katKeluar.includes('Security')) return 'Masuk Security';
+    return null;
+}
+
+function isKeluarOvernightKategori(kategori) {
+    const k = String(kategori || '').toLowerCase();
+    return k.startsWith('keluar') && k.includes('shift malam');
+}
+
+async function resolveTanggalAbsensi(nrp, kategori, tanggalDefault) {
+    if (!isKeluarOvernightKategori(kategori)) return tanggalDefault;
+
+    const katMasuk = pasanganMasuk(kategori);
+    if (!katMasuk) return tanggalDefault;
+
+    // Jika ada masuk malam/security di tanggal yang sama, keluar wajib H+1.
+    const sameDayMasuk = await q(
+        `SELECT id
+         FROM table_absensi
+         WHERE nrp = ? AND tanggal = ? AND kategori = ?
+         LIMIT 1`,
+        [nrp, tanggalDefault, katMasuk]
+    );
+    if (sameDayMasuk.length) {
+        return dayjs(tanggalDefault).add(1, 'day').format('YYYY-MM-DD');
+    }
+
+    return tanggalDefault;
+}
+
+async function insertDeteksiLog(sql, params, fallbackStatusIndex = -1) {
+    try {
+        await q(sql, params);
+    } catch (e) {
+        const isEnumStatusError = fallbackStatusIndex >= 0
+            && params[fallbackStatusIndex] === 'ambiguous'
+            && (e.code === 'WARN_DATA_TRUNCATED' || e.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD');
+
+        if (!isEnumStatusError) throw e;
+
+        const fallbackParams = [...params];
+        fallbackParams[fallbackStatusIndex] = 'unknown';
+        await q(sql, fallbackParams);
+        console.warn('[deteksi-log] status ambiguous belum ada di ENUM, fallback ke unknown. Jalankan migrasi sql/2026-07-09-fix-critical-bugs.sql');
+    }
 }
 
 function computeLateFlag(kategori, now) {
@@ -128,8 +197,9 @@ router.get('/karyawan/search', async (req, res) => {
         // 1) Cek cache
         let rows = await q(`
      SELECT nrp, nama, departement, divisi, jabatan
-     FROM table_karyawan_cache
-     WHERE nrp LIKE ? OR nama LIKE ?
+            FROM table_karyawan_cache
+            WHERE (nrp LIKE ? OR nama LIKE ?)
+              AND UPPER(COALESCE(status, '')) NOT IN ('RESIGN','KELUAR','NONAKTIF','NON-AKTIF','HABIS KONTRAK')
      LIMIT 20
    `, [`%${qstr}%`, `%${qstr}%`]);
         if (rows.length) return res.json(rows);
@@ -138,7 +208,12 @@ router.get('/karyawan/search', async (req, res) => {
         const hrRows = await hrq(`
      SELECT nrp, nama, departement, divisi, jabatan, status
      FROM data_karyawan
-     WHERE nrp LIKE ? OR nama LIKE ?
+     WHERE (nrp LIKE ? OR nama LIKE ?)
+       AND (
+         status_io = '1'
+         OR UPPER(COALESCE(status, '')) IN ('KONTRAK','TETAP','MAGANG')
+       )
+       AND UPPER(COALESCE(status, '')) NOT IN ('RESIGN','KELUAR','NONAKTIF','NON-AKTIF','HABIS KONTRAK')
      LIMIT 20
    `, [`%${qstr}%`, `%${qstr}%`]);
         for (const r of hrRows) {
@@ -435,7 +510,7 @@ router.post('/absen', async (req, res) => {
 
         // 3) Jika tidak ada kandidat atau di atas threshold → unknown
         if (!best.nrp || best.dist > FACE_THRESHOLD) {
-            await q(
+            await insertDeteksiLog(
                 'INSERT INTO table_deteksi_log (context, kategori, status, distance, frame_snapshot) VALUES (?,?,?,?,?)',
                 [
                     'absensi',
@@ -443,14 +518,15 @@ router.post('/absen', async (req, res) => {
                     'unknown',
                     best.dist || null,
                     frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
-                ]
+                ],
+                2
             );
             return res.json({ ok: false, reason: 'unknown' });
         }
 
         // 4) Jika selisih best vs second terlalu kecil → ambiguous (jangan catat absensi)
         if (second.nrp && (second.dist - best.dist) < FACE_MARGIN_MIN) {
-            await q(
+            await insertDeteksiLog(
                 'INSERT INTO table_deteksi_log (context, kategori, status, distance, frame_snapshot) VALUES (?,?,?,?,?)',
                 [
                     'absensi',
@@ -458,7 +534,8 @@ router.post('/absen', async (req, res) => {
                     'ambiguous',
                     best.dist,
                     frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
-                ]
+                ],
+                2
             );
             return res.json({
                 ok: false,
@@ -475,6 +552,7 @@ router.post('/absen', async (req, res) => {
             return res.json({ ok: false, reason: 'inactive', match: { ...best, ...info } });
         }
 
+        const tanggalAbsensi = await resolveTanggalAbsensi(best.nrp, kategori, nowObj.tanggal);
         const late = computeLateFlag(kategori, nowObj.now);
         const lateMin = computeLateMinutes(kategori, nowObj.now);
         const shiftCode = deriveShiftCode(kategori);
@@ -492,7 +570,7 @@ router.post('/absen', async (req, res) => {
       `,
                 [
                     best.nrp,
-                    nowObj.tanggal,
+                    tanggalAbsensi,
                     nowObj.jam,
                     kategori,
                     shiftCode,
@@ -517,7 +595,7 @@ router.post('/absen', async (req, res) => {
 
 
         // Log deteksi sukses
-        await q(
+        await insertDeteksiLog(
             'INSERT INTO table_deteksi_log (context, kategori, nrp_detected, distance, status, frame_snapshot) VALUES (?,?,?,?,?,?)',
             [
                 'absensi',
@@ -526,7 +604,8 @@ router.post('/absen', async (req, res) => {
                 best.dist,
                 'recognized',
                 frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
-            ]
+            ],
+            4
         );
 
         // Sukses
@@ -615,14 +694,16 @@ router.get('/hr/karyawan', async (req, res) => {
 
         // 2) Ambil status teks dari HR (rjsmanage.data_karyawan)
         let hrStatusMap = new Map();
+        let hrStatusIoMap = new Map();
         if (nrps.length) {
             const hrRows = await hrq(
-                `SELECT nrp, status 
+                `SELECT nrp, status, status_io
                  FROM data_karyawan 
                  WHERE nrp IN (${placeholders})`,
                 nrps
             );
             hrStatusMap = new Map(hrRows.map(r => [r.nrp, r.status]));
+            hrStatusIoMap = new Map(hrRows.map(r => [r.nrp, r.status_io]));
         }
 
         // 3) Ambil info wajah dari table_face_embeddings
@@ -636,11 +717,14 @@ router.get('/hr/karyawan', async (req, res) => {
         }
 
         // 4) Gabungkan: data lokal + status HR + flag hasFace
-        let mapped = allRows.map(r => ({
-            ...r,
-            status: hrStatusMap.get(r.nrp) || r.status, // override status angka dengan status HR (teks)
-            hasFace: faceSet.has(r.nrp)
-        }));
+        let mapped = allRows
+            .map(r => ({
+                ...r,
+                status: hrStatusMap.get(r.nrp) || r.status, // override status angka dengan status HR (teks)
+                status_io: hrStatusIoMap.get(r.nrp),
+                hasFace: faceSet.has(r.nrp)
+            }))
+            .filter(r => isActiveKaryawanStatus(r.status, r.status_io));
 
         // 5) Filter wajah jika diminta
         if (faceFilter === 'with') {
@@ -652,14 +736,13 @@ router.get('/hr/karyawan', async (req, res) => {
         const totalAll = mapped.length;
         const rows = mapped.slice(offset, offset + limit);
 
-        // 6) Summary tetap dari table_karyawan (lokal)
-        const [sumRow] = await q(`
-            SELECT 
-                COUNT(*) AS total,
-                SUM(CASE WHEN UPPER(dep) = 'SPINNING' THEN 1 ELSE 0 END) AS spinning,
-                SUM(CASE WHEN UPPER(dep) = 'WEAVING' THEN 1 ELSE 0 END) AS weaving
-            FROM table_karyawan
-        `);
+        // 6) Summary mengikuti daftar aktif yang sudah difilter dari HR.
+        const sumRow = mapped.reduce((acc, r) => {
+            acc.total++;
+            if (String(r.dep || '').trim().toUpperCase() === 'SPINNING') acc.spinning++;
+            if (String(r.dep || '').trim().toUpperCase() === 'WEAVING') acc.weaving++;
+            return acc;
+        }, { total: 0, spinning: 0, weaving: 0 });
 
         res.json({
             page,
@@ -940,7 +1023,7 @@ router.get('/sync/data', async (req, res) => {
     try {
         // 1) Embeddings (hanya nrp + array, tanpa snapshot blob)
         const embRows = await q('SELECT nrp, embedding FROM table_face_embeddings');
-        const embeddings = embRows.map(r => ({
+        let embeddings = embRows.map(r => ({
             nrp: r.nrp,
             emb: Array.isArray(r.embedding) ? r.embedding : JSON.parse(r.embedding)
         }));
@@ -955,12 +1038,15 @@ router.get('/sync/data', async (req, res) => {
         let profRows = [];
         if (nrps.length) {
             const placeholders = nrps.map(() => '?').join(',');
-            profRows = await q(
+            const cachedProfiles = await q(
                 `SELECT nrp, nama, departement AS dep, divisi, jabatan, status
                  FROM table_karyawan_cache
                  WHERE nrp IN (${placeholders})`,
                 nrps
             );
+            profRows = cachedProfiles.filter(r => isActiveKaryawanStatus(r.status, null));
+            const activeNrps = new Set(profRows.map(r => r.nrp));
+            embeddings = embeddings.filter(e => activeNrps.has(e.nrp));
         }
 
         // 3) Config untuk matching & late computation di client
@@ -1014,7 +1100,8 @@ router.post('/absen/sync', async (req, res) => {
                 }
 
                 // Compute late flags berdasarkan timestamp client
-                const clientTime = dayjs(`${tanggal} ${jam}`);
+                const tanggalAbsensi = await resolveTanggalAbsensi(nrp, kategori, tanggal);
+                const clientTime = dayjs(`${tanggalAbsensi} ${jam}`);
                 const late = computeLateFlag(kategori, clientTime);
                 const lateMin = computeLateMinutes(kategori, clientTime);
                 const shiftCode = deriveShiftCode(kategori);
@@ -1028,7 +1115,7 @@ router.post('/absen/sync', async (req, res) => {
                            is_late, menit_terlambat, snapshot_base64, source)
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                         [
-                            nrp, tanggal, jam, kategori, shiftCode,
+                            nrp, tanggalAbsensi, jam, kategori, shiftCode,
                             info.nama, info.dep, info.divisi, info.jabatan,
                             late, lateMin, frameBase64 || null, 'offline-sync'
                         ]
@@ -1043,12 +1130,13 @@ router.post('/absen/sync', async (req, res) => {
                 }
 
                 // Log deteksi sukses
-                await q(
+                await insertDeteksiLog(
                     'INSERT INTO table_deteksi_log (context, kategori, nrp_detected, status, frame_snapshot) VALUES (?,?,?,?,?)',
                     [
                         'absensi', kategori, nrp, 'recognized',
                         frameBase64 ? Buffer.from(frameBase64.split(',')[1] || '', 'base64') : null
-                    ]
+                    ],
+                    3
                 );
 
                 results.push({ clientId, ok: true });

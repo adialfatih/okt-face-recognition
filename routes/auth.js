@@ -1,6 +1,28 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const router = express.Router();
 const { q } = require('../db');
+
+function isBcryptHash(value) {
+    return typeof value === 'string' && /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+async function verifyPassword(userRow, password) {
+    const stored = userRow.password || '';
+
+    if (isBcryptHash(stored)) {
+        return await bcrypt.compare(password, stored);
+    }
+
+    // Kompatibilitas data lama: jika plaintext cocok, langsung upgrade ke bcrypt.
+    if (stored === password) {
+        const hashed = await bcrypt.hash(password, 12);
+        await q('UPDATE table_users SET password=? WHERE id=?', [hashed, userRow.id]);
+        return true;
+    }
+
+    return false;
+}
 
 // GET /login
 router.get('/login', (req, res) => {
@@ -33,7 +55,7 @@ router.post('/login', async (req, res) => {
             [username]
         );
 
-        if (!rows.length || rows[0].password !== password) {
+        if (!rows.length || !(await verifyPassword(rows[0], password))) {
             return res.render('login', {
                 title: 'Login',
                 error: 'Username atau password salah.',

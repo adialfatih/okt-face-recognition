@@ -77,10 +77,35 @@ const FaceCommon = (function () {
         stopStream(video);
         return await startCamera(video, { deviceId });
     }
-    function grabFrame(video) {
-        const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
-        const ctx = c.getContext('2d'); ctx.drawImage(video, 0, 0, c.width, c.height);
-        return c.toDataURL('image/jpeg', 0.85);
+    /**
+     * Ambil snapshot dari video sebagai data URI JPEG.
+     *
+     * Dulu ini meng-encode frame penuh 1280x720 pada kualitas 0.85 → ±300KB per
+     * absensi. String sebesar itu ikut mengendap di antrian IndexedDB dan membuat
+     * batch upload menembus limit body server. Sekarang frame diperkecil dulu.
+     *
+     * @param {HTMLVideoElement} video
+     * @param {{maxEdge?: number, quality?: number}} opts
+     */
+    function grabFrame(video, opts = {}) {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        if (!vw || !vh) return null;
+
+        const maxEdge = Number(opts.maxEdge) || 640;
+        const quality = Number(opts.quality) || 0.72;
+
+        const scale = Math.min(1, maxEdge / Math.max(vw, vh));
+        const w = Math.max(1, Math.round(vw * scale));
+        const h = Math.max(1, Math.round(vh * scale));
+
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(video, 0, 0, w, h);
+        const out = c.toDataURL('image/jpeg', quality);
+
+        // Lepaskan backing store canvas tanpa menunggu GC.
+        c.width = 0; c.height = 0;
+        return out;
     }
 
     function syncCanvasToDisplay(video, canvas) {
@@ -105,9 +130,15 @@ const FaceCommon = (function () {
         });
     }
     function drawWithResize(video, canvas, rawDetections) {
-        const displaySize = { width: video.clientWidth || video.videoWidth, height: video.clientHeight || video.videoHeight };
-        faceapi.matchDimensions(canvas, displaySize);
-        const resized = faceapi.resizeResults(rawDetections, displaySize);
+        // JANGAN panggil faceapi.matchDimensions() di sini. Fungsi itu menulis
+        // canvas.width/height, dan menulis dimensi canvas mengalokasikan ulang
+        // backing store-nya. Dipanggil dari loop render, itu berarti realokasi
+        // puluhan kali per detik di atas WebGL context TFJS — sumber crash renderer.
+        // Dimensi canvas sudah disinkronkan lewat syncCanvasToDisplay() pada event
+        // 'loadedmetadata' dan 'resize' saja.
+        const width = canvas.width, height = canvas.height;
+        if (!width || !height) return;
+        const resized = faceapi.resizeResults(rawDetections, { width, height });
         drawDetections(canvas, resized);
     }
     return { loadModels, startCamera, switchCamera, listCameras, stopStream, grabFrame, syncCanvasToDisplay, drawDetections, drawWithResize };
