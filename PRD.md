@@ -31,6 +31,7 @@ Sejak 2026-07 aplikasi juga berupa **PWA offline-first**: stasiun absensi tetap 
 | Login (session, bcrypt) | ✅ jalan | `/login` |
 | Absensi wajah online | ✅ jalan | `/absensi` → `/absensi/capture?k=` |
 | Absensi wajah offline (PWA) | ✅ jalan | sama |
+| **Absensi v2 — multi-wajah (maks 5/frame)** | 🧪 uji coba, menu terpisah; v1 tetap jalur produksi | `/absensi-v2` → `/absensi-v2/capture?k=` |
 | Rekam wajah (15 sampel) | ✅ jalan (menu disembunyikan dari drawer, masih dari dashboard & bottom-nav) | `/rekam` → `/rekam/capture?nrp=` |
 | Test wajah | ✅ jalan | `/test`, `/test/capture` |
 | Data karyawan (filter wajah/dep, paginasi) | ✅ jalan | `/karyawan` |
@@ -177,7 +178,8 @@ okt-face-recognition/
 │  ├─ js/
 │  │  ├─ face-common.js      # FaceCommon: loadModels, startCamera/switch/list, grabFrame(maxEdge,quality),
 │  │  │                      #   syncCanvasToDisplay, drawWithResize, drawDetections
-│  │  ├─ absensi.js          # Loop absensi: quality gate, multi-sample, online→/api/absen, offline→OfflineMatch+pending
+│  │  ├─ absensi.js          # [v1, produksi] Loop absensi 1 wajah: quality gate, multi-sample, online→/api/absen, offline→OfflineMatch+pending
+│  │  ├─ absensi-v2.js       # [v2, uji coba] Multi-wajah: tracking IoU, match lokal, kotak merah/hijau + label nama, kirim per orang
 │  │  ├─ offline-db.js       # OfflineDB: wrapper IndexedDB (embeddings, profiles, config, pending, meta)
 │  │  ├─ offline-match.js    # OfflineMatch: port logika matching server ke client
 │  │  ├─ sync-manager.js     # SyncManager: checkServer, downloadDataMaster, uploadPending (batch), fullSync
@@ -200,6 +202,7 @@ okt-face-recognition/
    ├─ login.ejs, dashboard.ejs, about.ejs, placeholder.ejs
    ├─ absensi-start.ejs      # grid 14 kategori; prefetch /absensi/capture agar ter-cache SW
    ├─ absensi-capture.ejs    # set window.__KATEGORI__, simpan session user ke IndexedDB (untuk login offline)
+   ├─ absensi-v2-start.ejs, absensi-v2-capture.ejs   # Absensi v2 (uji coba): grid kategori + kamera & riwayat sesi
    ├─ rekam-start.ejs, rekam-capture.ejs (window.__NRP__)
    ├─ test-start.ejs, test-capture.ejs
    ├─ karyawan.ejs, laporan-absensi.ejs (load jQuery/DataTables/flatpickr/autocomplete/SweetAlert)
@@ -211,6 +214,8 @@ okt-face-recognition/
 **Absensi online:** `absensi-start.ejs` → `absensi-capture.ejs` → `absensi.js` (quality gate + 2–3 descriptor + `grabFrame` 640px) → `POST /api/absen` (`api.js`) → match `EMB_CACHE` → `ensureInCache` (profil) → cek status aktif → `resolveTanggalAbsensi` → `INSERT table_absensi` (UNIQUE → duplicate) → `insertDeteksiLog` → JSON → UI (TTS + kartu hasil).
 
 **Absensi offline:** `absensi.js` deteksi `_isOnline=false` (atau network error saat fetch) → `tryOfflineMatch` → `OfflineMatch.findBestMatch` → `OfflineDB.getProfile` → cek aktif → anti-dobel lokal (index `[nrp,tanggal,kategori]`) → `OfflineDB.addPending` → UI tampil "📴(offline)". Saat online: `SyncManager.fullSync()` → `uploadPending()` (batch 5, `POST /api/absen/sync`) → `downloadDataMaster()` (`GET /api/sync/data`).
+
+**Absensi v2 (uji coba, `absensi-v2.js`):** tiap tick (220ms) `detectAllFaces` (TinyFaceDetector inputSize 416) → maks 5 wajah terbesar → dipasangkan ke *track* lewat IoU ≥0.3 (track hilang >1.2s dibuang). Descriptor hanya dihitung bila ada wajah baru/belum terkonfirmasi (+ tiap 5 tick untuk verifikasi ulang). Per track: quality gate (skor ≥0.6, tinggi wajah 10–90% frame) → 2–3 descriptor → `OfflineMatch.findBestMatch` lokal (tak dikenal/ambiguous = tetap merah, **tidak** dikirim) → cek cooldown NRP 2 menit → `POST /api/absen` (`source:'web-v2'`, snapshot = crop wajah 480px) → hasil: ok/duplicate = kotak hijau + nama; unknown/ambiguous dari server = merah, coba lagi 3s; inactive = merah 2 menit. Offline/401 → antrian IndexedDB dengan `source:'offline-sync-v2'`. Hanya efek suara ping/error, tanpa ucapan nama (TTS). Riwayat sesi tampil di bawah kamera.
 
 **Rekam wajah:** `rekam-start.ejs` (autocomplete `/api/karyawan/search`) → `rekam-capture.ejs?nrp=` → `rekam.js`: cek `/api/faces/count` → konfirmasi penggantian (data lama **tidak** dihapus di client) → kumpulkan 15 sampel (jeda ≥600ms, frame 960px q0.82) dengan verifikasi sampel pertama via `/api/match` (tolak bila wajah milik NRP lain) → tombol Simpan → `POST /api/faces` (`forceReplace:true`).
 
@@ -236,7 +241,7 @@ okt-face-recognition/
 | menit_terlambat | INT | |
 | snapshot_base64 | LONGTEXT NULL | data URI (generasi lama, masih ditulis) |
 | snapshot_url | VARCHAR(255) NULL | `/storage/...webp` (diisi proses eksternal) |
-| source | VARCHAR(32) def 'web' | `'offline-sync'` untuk data dari antrian offline |
+| source | VARCHAR(32) def 'web' | `web` (v1 online), `offline-sync` (v1 offline), `web-v2` / `offline-sync-v2` (Absensi v2 uji coba). Whitelist di `ONLINE_SOURCES`/`OFFLINE_SOURCES` (`api.js`) |
 | created_at | TIMESTAMP | |
 | **UNIQUE** `uniq_absen` (nrp, tanggal, kategori) | | basis anti-dobel |
 
@@ -304,7 +309,7 @@ Masuk/Keluar Shift Pagi | Masuk/Keluar Shift Siang | Masuk/Keluar Shift Malam
 Masuk/Keluar DS | Masuk/Keluar Driver | Masuk/Keluar Security
 Masuk Terlambat | Ijin Keluar
 ```
-Daftar ini juga **di-hardcode** di: `views/absensi-start.ejs` (tombol), `public/sw.js` (`ABSENSI_KATEGORI`, halaman absensi offline), `views/laporan-absensi.ejs` (filter), dan pemetaan pasangan di `api.js`/`api-absensi.js`. Menambah kategori = ubah semua tempat itu.
+Daftar ini juga **di-hardcode** di: `views/absensi-start.ejs` & `views/absensi-v2-start.ejs` (tombol), `public/sw.js` (`ABSENSI_KATEGORI`, halaman absensi offline), `views/laporan-absensi.ejs` (filter), dan pemetaan pasangan di `api.js`/`api-absensi.js`. Menambah kategori = ubah semua tempat itu.
 
 Validasi wajib `isValidKategori()`. `shift_code` diturunkan via `deriveShiftCode()` (diduplikasi di `api.js` & `api-absensi.js`).
 
@@ -329,7 +334,8 @@ Validasi wajib `isValidKategori()`. `shift_code` diturunkan via `deriveShiftCode
 - TinyFaceDetector `inputSize 256, scoreThreshold 0.5`.
 - Skor deteksi ≥ 0.6; tinggi wajah relatif 20%–85% tinggi frame; tepat 1 wajah.
 - Absensi: kumpulkan 2–3 descriptor dalam window 1.2 detik, loop throttle 220ms, cooldown 4 detik setelah hasil.
-- Rekam: 15 sampel, jeda ≥600ms (+450ms tunggu), verifikasi sampel pertama via `/api/match`.
+- Rekam: 15 sampel, jeda ≥600ms (+450ms tunggu), verifikasi sampel pertama via `/api/match`. Sejak 2026-10-30 tanpa tutup putih/lingkaran — hanya kotak hijau.
+- Absensi v2 (uji coba): inputSize 416, maks 5 wajah, tinggi wajah 10–90% frame, 2–3 sampel per wajah, cooldown 2 menit per NRP (§4.1).
 
 ### 6.5 Tanggal absensi & pairing Masuk/Keluar
 - **Keluar Shift Malam** (`resolveTanggalAbsensi`): jika ada "Masuk Shift Malam" di tanggal hari ini, tanggal keluar disimpan **H+1**. Keluar normal jam 06:00 otomatis sudah tanggal H+1.
@@ -364,13 +370,13 @@ Ada **dua jalur sync yang tumpang tindih** (kandidat konsolidasi):
 
 ## 8. Mode Offline / PWA (detail)
 
-### 8.1 Service Worker (`public/sw.js`, `CACHE_VERSION = 'v5'`)
+### 8.1 Service Worker (`public/sw.js`, `CACHE_VERSION = 'v6'`)
 - Didaftarkan di `partials/head.ejs` (scope `/`); disajikan via route `/sw.js` dengan `Cache-Control: no-cache`.
 - **Install:** precache aset lokal wajib (`PRECACHE_URLS`: styles, ui/offline-*/sync/face-common/absensi.js, suara, 3 model face-api) — gagal satu = install gagal; CDN (`CDN_PRECACHE_URLS`) best-effort dengan mode CORS. `skipWaiting()` + `clients.claim()`.
 - **Strategi fetch (hanya GET):**
   | Request | Strategi |
   |---|---|
-  | Navigasi (`mode: navigate`) | network → jika redirect dikembalikan sbg 302 baru (tak di-cache); gagal → cache halaman → `/absensi` = halaman absensi offline buatan SW → `/absensi/capture` generik → `/` → halaman "belum tersedia offline" |
+  | Navigasi (`mode: navigate`) | network → jika redirect dikembalikan sbg 302 baru (tak di-cache); gagal → cache halaman → `/absensi` = halaman absensi offline buatan SW → capture generik (`CAPTURE_PATHS`: `/absensi/capture`, `/absensi-v2/capture`) → `/` → halaman "belum tersedia offline" |
   | `/login?online_check` / `?offline_session_check` | network-only |
   | `/api/sync/manifest` | network-first |
   | `/api/*` lain | network-only (503 JSON `{error:'offline'}` saat gagal) |
@@ -403,7 +409,7 @@ Tanpa sesi → `401 {ok:false, error:'unauthorized'}`.
 | Method | Path | Body/Query | Fungsi |
 |---|---|---|---|
 | POST | `/api/match` | `{descriptors:[[128f]]}` | Cari NRP terbaik. Return `{match:{nrp,dist,nama,dep,divisi,jabatan,status}}` atau `{match:null,bestDist[,secondDist]}` |
-| POST | `/api/absen` | `{kategori, descriptors, frameBase64}` | Catat absensi. `{ok:true, match, is_late, menit_terlambat}` / `{ok:false, reason}` (`unknown`\|`ambiguous`\|`duplicate`\|`inactive`\|`no-profile`) / 400 / 500 |
+| POST | `/api/absen` | `{kategori, descriptors, frameBase64, source?}` (`source` ∈ web, web-v2) | Catat absensi. `{ok:true, match, is_late, menit_terlambat}` / `{ok:false, reason}` (`unknown`\|`ambiguous`\|`duplicate`\|`inactive`\|`no-profile`) / 400 / 500 |
 | POST | `/api/faces` | `{nrp, samples:[{embedding,snapshotBase64,mime}], forceReplace}` | Simpan ≤15 embedding (transaksi; replace jika forceReplace); update EMB_CACHE. `{ok:false,reason:'exists'}` bila ada & tidak force |
 | GET | `/api/faces/count?nrp=` | | `{count}` |
 | POST | `/api/faces/reset` | `{nrp}` | Hapus semua embedding NRP + invalidasi EMB_CACHE (tidak dipakai UI lagi) |
@@ -440,10 +446,10 @@ Tanpa sesi → `401 {ok:false, error:'unauthorized'}`.
 | GET 🌐 | `/api/health` | `{ok:true,time}` — probe liveness (jangan di-cache) |
 | GET | `/api/sync/manifest` | `{embCount, embMaxAt, profileMaxAt, config}` (belum dipakai client) |
 | GET | `/api/sync/data` | `{embeddings, profiles, config, syncToken, syncedAt}` — data master offline |
-| POST 🌐* | `/api/absen/sync` | *Butuh sesi **atau** header `Authorization: Bearer <syncToken>` (401 jika tidak). `{items:[{clientId,nrp,kategori,tanggal,jam,frameBase64}]}` → `{ok:true, results:[{clientId, ok, reason?}]}` (reason: `invalid-kategori`\|`invalid-time`\|`no-profile`\|`inactive`\|`duplicate`\|`error`) |
+| POST 🌐* | `/api/absen/sync` | *Butuh sesi **atau** header `Authorization: Bearer <syncToken>` (401 jika tidak). `{items:[{clientId,nrp,kategori,tanggal,jam,frameBase64,source?}]}` (`source` ∈ offline-sync, offline-sync-v2) → `{ok:true, results:[{clientId, ok, reason?}]}` (reason: `invalid-kategori`\|`invalid-time`\|`no-profile`\|`inactive`\|`duplicate`\|`error`) |
 
 ### Halaman (`routes/pages.js`, di-guard) & Auth (`routes/auth.js`)
-`GET /` (dashboard), `/absensi`, `/absensi/capture?k=`, `/rekam`, `/rekam/capture?nrp=`, `/test`, `/test/capture`, `/karyawan`, `/laporan`, `/cuti` & `/ijin` (placeholder), `/about`, `/debug/match`, `/deteksi-log`. Auth: `GET/POST /login`, `POST /logout`. Statis: `/public/*`, `/sw.js`, `/storage/*`.
+`GET /` (dashboard), `/absensi`, `/absensi/capture?k=`, `/absensi-v2`, `/absensi-v2/capture?k=` (uji coba), `/rekam`, `/rekam/capture?nrp=`, `/test`, `/test/capture`, `/karyawan`, `/laporan`, `/cuti` & `/ijin` (placeholder), `/about`, `/debug/match`, `/deteksi-log`. Auth: `GET/POST /login`, `POST /logout`. Statis: `/public/*`, `/sw.js`, `/storage/*`.
 
 ---
 
@@ -571,3 +577,4 @@ Tidak ada test otomatis maupun linter di project ini — verifikasi manual via b
 | 2026-07-08 | Versi awal (analisa sebelum PWA offline). |
 | 2026-10-30 | Analisa ulang penuh s/d commit `79cad5e`: tambah mode offline/PWA (§8), IndexedDB, endpoint sync, session MySQL, bcrypt, `PASSWORD_OTORISASI`, pairing shift malam & Security, status fitur; tandai bug lama yang sudah diperbaiki; tambah bug baru B-01…B-25 dengan ID baru; panduan agent diperbarui. Tambah `CLAUDE.md`. |
 | 2026-10-30 | Perbaikan B-01…B-07: login/logout offline, proteksi `/api/absen/sync` (syncToken JWT + validasi waktu), fallback 401 di absensi, pairing Security PUT/DELETE, loop rekam ulang, rekam tidak lagi menghapus data sebelum simpan, invalidasi EMB_CACHE saat reset. `CACHE_VERSION` → v5. |
+| 2026-10-30 | Tambah **Absensi v2 (uji coba)**: multi-wajah maks 5, kotak merah/hijau + nama, cooldown 2 menit, menu terpisah `/absensi-v2`; `source` web-v2/offline-sync-v2; tutup putih di halaman rekam dihapus; `CACHE_VERSION` → v6. |

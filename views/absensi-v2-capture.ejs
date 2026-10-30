@@ -1,0 +1,55 @@
+<% layout('layout') -%>
+    <div class="space-y-3">
+        <div class="flex flex-wrap items-center justify-center gap-2">
+            <div id="kategoriBadge" class="badge badge-lg">Kategori: <%= kategori %>
+            </div>
+            <span class="badge badge-warning">Absensi v2 · uji coba</span>
+        </div>
+
+        <!-- Status koneksi / data offline / antrian -->
+        <div id="v2Status" class="flex flex-wrap items-center justify-center gap-1 min-h-[1.5rem]"></div>
+
+        <div class="relative">
+            <video id="video" autoplay playsinline class="w-full rounded-box"></video>
+            <canvas id="overlay" class="absolute inset-0 pointer-events-none"></canvas>
+            <div class="absolute right-2 top-2 z-50">
+                <button id="btnSwitchCam" class="btn btn-xs md:btn-sm">Ganti Kamera</button>
+            </div>
+            <div id="v2Notice"
+                class="absolute inset-x-2 bottom-2 z-50 text-center text-xs pointer-events-none"></div>
+        </div>
+
+        <!-- Riwayat sesi ini -->
+        <div class="card bg-white shadow-sm border border-sky-100">
+            <div class="card-body p-3">
+                <h2 class="text-sm font-semibold text-slate-700">
+                    <i class="fa-solid fa-list-check mr-1 text-emerald-600"></i>
+                    Tercatat di sesi ini <span id="v2Count" class="badge badge-sm ml-1">0</span>
+                </h2>
+                <ul id="v2History" class="text-xs divide-y divide-slate-100 max-h-72 overflow-auto">
+                    <li class="py-2 text-slate-400">Belum ada.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script defer src="/public/js/offline-match.js"></script>
+    <script defer src="/public/js/sync-manager.js"></script>
+    <script>
+        window.addEventListener('load', () => {
+            const user = JSON.parse(decodeURIComponent('<%= encodeURIComponent(JSON.stringify(currentUser || null)) %>'));
+            if (!user || typeof OfflineDB === 'undefined') return;
+            const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
+            OfflineDB.open()
+                .then(() => OfflineDB.setMeta('session', { user, expiresAt }))
+                .catch(err => console.warn('[offline-auth] cache session failed:', err));
+        });
+    </script>
+    <script defer src="/public/js/face-common.js"></script>
+    <script defer>
+        window.__KATEGORI__ = new URLSearchParams(window.location.search).get('k') || decodeURIComponent("<%= encodeURIComponent(kategori || '') %>");
+        window.addEventListener('DOMContentLoaded', () => {
+            const badge = document.getElementById('kategoriBadge');
+            if (badge) badge.textContent = `Kategori: ${window.__KATEGORI__ || '-'}`;
+        });
+    </script>
+    <script defer src="/public/js/absensi-v2.js"></script>

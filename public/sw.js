@@ -6,7 +6,7 @@
  *  - Network-first untuk halaman dan API GET
  *  - POST absensi offline tetap ditangani client-side oleh IndexedDB
  */
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = `okt-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `okt-runtime-${CACHE_VERSION}`;
 
@@ -42,6 +42,7 @@ const PRECACHE_URLS = [
     '/public/js/offline-session.js',
     '/public/js/face-common.js',
     '/public/js/absensi.js',
+    '/public/js/absensi-v2.js',
     '/public/error.mp3',
     '/public/ping.mp3',
     '/public/models/tiny_face_detector_model-weights_manifest.json',
@@ -52,6 +53,10 @@ const PRECACHE_URLS = [
     '/public/models/face_recognition_model-shard1',
     '/public/models/face_recognition_model-shard2'
 ];
+
+// Halaman capture yang disimpan juga dengan key generik (tanpa ?k=) supaya kategori
+// apa pun tetap bisa dibuka offline; kategori dibaca client-side dari query string.
+const CAPTURE_PATHS = new Set(['/absensi/capture', '/absensi-v2/capture']);
 
 const ABSENSI_KATEGORI = [
     ['Masuk Shift Pagi', 'Masuk Pagi'],
@@ -233,8 +238,8 @@ async function navigationHandler(req) {
 
         safeCachePut(RUNTIME_CACHE, req, resp);
         const url = new URL(req.url);
-        if (url.origin === self.location.origin && url.pathname === '/absensi/capture') {
-            safeCachePut(RUNTIME_CACHE, '/absensi/capture', resp);
+        if (url.origin === self.location.origin && CAPTURE_PATHS.has(url.pathname)) {
+            safeCachePut(RUNTIME_CACHE, url.pathname, resp);
         }
         return resp;
     } catch (e) {
@@ -251,8 +256,8 @@ async function navigationFallback(req) {
     if (url.origin === self.location.origin && url.pathname === '/absensi') {
         return offlineAbsensiPage();
     }
-    if (url.origin === self.location.origin && url.pathname === '/absensi/capture') {
-        const genericCapture = await caches.match('/absensi/capture');
+    if (url.origin === self.location.origin && CAPTURE_PATHS.has(url.pathname)) {
+        const genericCapture = await caches.match(url.pathname);
         if (genericCapture) return genericCapture;
     }
 

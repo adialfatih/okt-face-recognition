@@ -147,7 +147,8 @@ const SyncManager = (function () {
                     kategori: p.kategori,
                     tanggal: p.tanggal,
                     jam: p.jam,
-                    frameBase64: p.frameBase64 || null
+                    frameBase64: p.frameBase64 || null,
+                    source: p.source || undefined // diisi Absensi v2; kosong = default server
                 }));
 
                 const resp = await fetch('/api/absen/sync', {

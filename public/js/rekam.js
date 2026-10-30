@@ -269,42 +269,6 @@
             const MIN_FACE_REL_HEIGHT = 0.20; // min 20% tinggi frame
             const MAX_FACE_REL_HEIGHT = 0.85; // max 85% (jangan terlalu dekat)
 
-            function drawGuideMaskCircle() {
-                const ctx = overlay.getContext('2d');
-                const w = overlay.width;
-                const h = overlay.height;
-                if (!w || !h) return;
-
-                const r = Math.min(w, h) * 0.35;
-                const cx = w / 2;
-                const cy = h * 0.42;
-
-                // JANGAN clearRect → kita ingin tetap melihat bbox hijau & landmark
-                ctx.save();
-
-                // 1) Gambar putih semi-transparan (atau putih full)
-                ctx.fillStyle = 'rgba(255, 255, 255, 1)';
-                ctx.globalAlpha = 1; // putih solid
-                ctx.fillRect(0, 0, w, h);
-
-                // 2) Lubangi bagian lingkaran
-                ctx.globalCompositeOperation = "destination-out";
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.restore();
-
-                // 3) Garis border lingkaran (di atas semuanya)
-                ctx.save();
-                ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([8, 6]);
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.restore();
-            }
             async function loop() {
                 try {
                     const now = performance.now();
@@ -315,9 +279,12 @@
                             .withFaceLandmarks()
                             .withFaceDescriptors();
                         lastDet = now;
+                        // Gambar hanya saat deteksi baru jalan. Tutup putih + lingkaran
+                        // dihapus: kotak hijau cukup sebagai panduan posisi, dan
+                        // menggambar di setiap frame rAF dengan `dets` kosong membuat
+                        // kotak berkedip.
+                        FaceCommon.drawWithResize(video, overlay, dets);
                     }
-                    FaceCommon.drawWithResize(video, overlay, dets);
-                    drawGuideMaskCircle();
                     //if (dets.length === 1 && saved < 15) {
                     // Ambil sampel hanya jika:
                     // - sedang mode recording

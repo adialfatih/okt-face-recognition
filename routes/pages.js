@@ -9,6 +9,10 @@ router.get('/', (req, res) => res.render('dashboard'));
 router.get('/absensi', (req, res) => res.render('absensi-start'));
 router.get('/absensi/capture', (req, res) => res.render('absensi-capture', { kategori: req.query.k || '' }));
 
+// Absensi v2 (uji coba): multi-wajah dalam 1 frame. Jalur v1 di atas tetap dipakai produksi.
+router.get('/absensi-v2', (req, res) => res.render('absensi-v2-start'));
+router.get('/absensi-v2/capture', (req, res) => res.render('absensi-v2-capture', { kategori: req.query.k || '' }));
+
 // Rekam wajah
 router.get('/rekam', (req, res) => res.render('rekam-start'));
 router.get('/rekam/capture', (req, res) => res.render('rekam-capture', { nrp: req.query.nrp || '' }));

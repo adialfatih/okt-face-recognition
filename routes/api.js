@@ -102,6 +102,14 @@ function euclideanDistance(a, b) {
 
 function isValidKategori(k) { return KATEGORI.includes(k); }
 
+// Penanda asal data di table_absensi.source. Hanya nilai di sini yang diterima dari
+// client; selain itu dipakai default. Dipakai untuk membedakan data uji coba Absensi v2.
+const ONLINE_SOURCES = new Set(['web', 'web-v2']);
+const OFFLINE_SOURCES = new Set(['offline-sync', 'offline-sync-v2']);
+function pickSource(value, allowed, fallback) {
+    return allowed.has(value) ? value : fallback;
+}
+
 function isActiveKaryawanStatus(status, statusIo) {
     const s = String(status ?? '').trim().toUpperCase();
     const io = statusIo == null ? null : String(statusIo).trim();
@@ -515,6 +523,7 @@ router.get('/config/face', (req, res) => {
 router.post('/absen', async (req, res) => {
     try {
         const { kategori, descriptors, frameBase64 } = req.body;
+        const source = pickSource(req.body.source, ONLINE_SOURCES, 'web');
         if (!isValidKategori(kategori)) {
             return res.status(400).json({ error: 'Kategori tidak valid' });
         }
@@ -608,8 +617,8 @@ router.post('/absen', async (req, res) => {
         INSERT INTO table_absensi
           (nrp, tanggal, jam, kategori, shift_code,
            nama_snapshot, dep_snapshot, divisi_snapshot, jabatan_snapshot,
-           is_late, menit_terlambat, snapshot_base64)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+           is_late, menit_terlambat, snapshot_base64, source)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
       `,
                 [
                     best.nrp,
@@ -623,7 +632,8 @@ router.post('/absen', async (req, res) => {
                     info.jabatan,
                     late,
                     lateMin,
-                    frameBase64 || null
+                    frameBase64 || null,
+                    source
                 ]
             );
         } catch (e) {
@@ -1136,6 +1146,7 @@ router.post('/absen/sync', async (req, res) => {
         const results = [];
         for (const item of items) {
             const { nrp, kategori, tanggal, jam, frameBase64, clientId } = item;
+            const source = pickSource(item.source, OFFLINE_SOURCES, 'offline-sync');
             try {
                 // Validasi kategori
                 if (!isValidKategori(kategori)) {
@@ -1180,7 +1191,7 @@ router.post('/absen/sync', async (req, res) => {
                         [
                             nrp, tanggalAbsensi, jam, kategori, shiftCode,
                             info.nama, info.dep, info.divisi, info.jabatan,
-                            late, lateMin, frameBase64 || null, 'offline-sync'
+                            late, lateMin, frameBase64 || null, source
                         ]
                     );
                 } catch (e) {

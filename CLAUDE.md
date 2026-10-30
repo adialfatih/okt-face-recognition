@@ -10,6 +10,7 @@ Setelah mengubah struktur (route, tabel, file baru, aturan bisnis, status bug), 
 ## Aturan wajib
 - Bahasa Indonesia untuk komentar & pesan UI. Indentasi 4 spasi. Tanpa bundler/build step.
 - **Ubah file di `public/` → naikkan `CACHE_VERSION` di `public/sw.js`** (aset `/public/*` disajikan cache-first; tanpa ini device PWA tetap memakai versi lama).
+- **Absensi v2** (`/absensi-v2`, `public/js/absensi-v2.js`) masih uji coba. Jalur produksi pabrik = v1 (`/absensi`, `public/js/absensi.js`) — jangan ubah v1 saat mengerjakan v2 kecuali diminta.
 - Logika matching wajah ada di 3 tempat (`/api/match`, `/api/absen`, `public/js/offline-match.js`) — ubah bersamaan.
 - Aturan shift/telat/kategori ada di server (`routes/api.js`, `routes/api-absensi.js`) dan client (`public/js/absensi.js`, `public/sw.js`, `views/absensi-start.ejs`, `views/laporan-absensi.ejs`).
 - DB `rjsmanage` (HR) **read-only**. `sql/schema.sql` usang — perubahan skema lewat file `sql/YYYY-MM-DD-*.sql` baru. MySQL STRICT mode.

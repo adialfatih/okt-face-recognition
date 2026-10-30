@@ -1,0 +1,115 @@
+<% layout('layout') -%>
+
+    <section class="space-y-4">
+
+        <!-- HEADER -->
+        <div class="rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-600 text-white p-5 shadow-lg">
+            <h1 class="text-2xl font-bold mb-1">
+                <i class="fa-solid fa-users-viewfinder mr-2"></i> Absensi v2
+                <span class="badge badge-warning align-middle ml-1">Uji coba</span>
+            </h1>
+            <p class="opacity-90 text-sm">
+                Deteksi banyak wajah sekaligus (maks 5 orang per frame). Kotak hijau = sudah tercatat,
+                kotak merah = belum terkonfirmasi.
+            </p>
+        </div>
+
+        <div class="alert alert-warning text-sm">
+            <i class="fa-solid fa-flask"></i>
+            <span>Mode uji coba. Data tetap tercatat ke absensi resmi dengan penanda <b>web-v2</b>.
+                Untuk absensi harian gunakan menu <a href="/absensi" class="link font-semibold">Absensi</a>.</span>
+        </div>
+
+        <!-- MENU GRID -->
+        <div class="space-y-2">
+
+            <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wide pl-1">Shift Kerja</h2>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk Shift Pagi') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-sky-700 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-sun text-xl mb-1"></i>
+                    Masuk Pagi
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Keluar Shift Pagi') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-sky-700 flex flex-col py-3 shadow-sm">
+                    <i class="fa-regular fa-circle-left text-xl mb-1"></i>
+                    Keluar Pagi
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk Shift Siang') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-amber-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-cloud-sun text-xl mb-1"></i>
+                    Masuk Siang
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Keluar Shift Siang') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-amber-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-arrow-right-from-bracket text-xl mb-1"></i>
+                    Keluar Siang
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk Shift Malam') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-indigo-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-moon text-xl mb-1"></i>
+                    Masuk Malam
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Keluar Shift Malam') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-indigo-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-door-open text-xl mb-1"></i>
+                    Keluar Malam
+                </a>
+            </div>
+
+            <hr class="border-slate-200 my-4">
+
+            <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wide pl-1">Staff & Lainnya</h2>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk DS') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-sky-700 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-user-check text-xl mb-1"></i>
+                    Masuk DS
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Keluar DS') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-sky-700 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-user-xmark text-xl mb-1"></i>
+                    Keluar DS
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk Driver') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-green-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-truck-fast text-xl mb-1"></i>
+                    Masuk Driver
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Keluar Driver') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-green-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-arrow-right-from-bracket text-xl mb-1"></i>
+                    Keluar Driver
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk Security') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-red-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-shield-halved text-xl mb-1"></i>
+                    Masuk Security
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Keluar Security') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-red-600 flex flex-col py-3 shadow-sm">
+                    <i class="fa-solid fa-sign-out-alt text-xl mb-1"></i>
+                    Keluar Security
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Masuk Terlambat') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-orange-600 flex flex-col py-3 shadow-sm col-span-2 sm:col-span-1">
+                    <i class="fa-solid fa-clock-rotate-left text-xl mb-1"></i>
+                    Masuk Terlambat
+                </a>
+                <a href="/absensi-v2/capture?k=<%= encodeURIComponent('Ijin Keluar') %>"
+                    class="btn bg-white border border-sky-100 hover:bg-sky-50 text-violet-600 flex flex-col py-3 shadow-sm col-span-2 sm:col-span-1">
+                    <i class="fa-solid fa-person-walking-dashed-line-arrow-right text-xl mb-1"></i>
+                    Ijin Keluar
+                </a>
+            </div>
+
+        </div>
+
+    </section>
+    <script>
+        if ('serviceWorker' in navigator && navigator.onLine) {
+            fetch('/absensi-v2/capture', { credentials: 'same-origin' }).catch(() => { });
+        }
+    </script>
