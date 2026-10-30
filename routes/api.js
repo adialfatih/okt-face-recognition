@@ -18,6 +18,7 @@ const SHIFT_RULES = {
 
 const express = require('express');
 const dayjs = require('dayjs');
+const jwt = require('jsonwebtoken');
 const { q, pool, hrq } = require('../db');
 const router = express.Router();
 const { mapCacheToUI, ensureInCache, fullSyncFromHR, invalidateNRP, ACTIVE_STATUSES } = require('../services/karyawanCache');
@@ -28,6 +29,48 @@ const absensiRouter = require('./api-absensi');
 
 const FACE_THRESHOLD = Number(process.env.FACE_DISTANCE_THRESHOLD || 0.45);
 const FACE_MARGIN_MIN = Number(process.env.FACE_MARGIN_MIN || 0.05);
+
+// ==== Token sync offline ====
+// /api/absen/sync sengaja tidak di belakang sesi (device yang login offline belum
+// punya sesi server), jadi wajib dilindungi token yang diterbitkan saat device
+// mengunduh data master dalam keadaan login online (GET /api/sync/data).
+const SYNC_TOKEN_SECRET = process.env.SYNC_TOKEN_SECRET || process.env.SESSION_SECRET || 'rjs-face-dev-secret';
+const SYNC_TOKEN_TTL = '30d';
+// Rentang tanggal absensi offline yang masih diterima server.
+const OFFLINE_SYNC_MAX_AGE_DAYS = 30;
+const OFFLINE_SYNC_MAX_FUTURE_DAYS = 1; // toleransi jam device yang sedikit maju
+
+function issueSyncToken(user) {
+    return jwt.sign({ uid: user.id, username: user.username }, SYNC_TOKEN_SECRET, { expiresIn: SYNC_TOKEN_TTL });
+}
+
+async function isSyncAuthorized(req) {
+    if (req.session && req.session.user) return true;
+
+    const m = (req.get('authorization') || '').match(/^Bearer\s+(.+)$/i);
+    if (!m) return false;
+
+    let payload;
+    try {
+        payload = jwt.verify(m[1], SYNC_TOKEN_SECRET);
+    } catch (e) {
+        return false;
+    }
+    // User yang sudah dihapus tidak boleh lagi mengirim data.
+    const rows = await q('SELECT id FROM table_users WHERE id=? LIMIT 1', [payload.uid]);
+    return rows.length > 0;
+}
+
+function isValidOfflineTimestamp(tanggal, jam) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(tanggal || ''))) return false;
+    if (!/^\d{2}:\d{2}:\d{2}$/.test(String(jam || ''))) return false;
+    const t = dayjs(`${tanggal} ${jam}`);
+    if (!t.isValid()) return false;
+    const now = dayjs();
+    if (t.isBefore(now.subtract(OFFLINE_SYNC_MAX_AGE_DAYS, 'day'))) return false;
+    if (t.isAfter(now.add(OFFLINE_SYNC_MAX_FUTURE_DAYS, 'day'))) return false;
+    return true;
+}
 
 
 // ==== Embedding Cache (supaya match cepat untuk 1000+ karyawan) ====
@@ -632,8 +675,15 @@ router.get('/faces/count', async (req, res) => {
 router.post('/faces/reset', async (req, res) => {
     const { nrp } = req.body || {};
     if (!nrp) return res.status(400).json({ error: 'nrp required' });
-    await q('DELETE FROM table_face_embeddings WHERE nrp=?', [nrp]);
-    res.json({ ok: true });
+    try {
+        await q('DELETE FROM table_face_embeddings WHERE nrp=?', [nrp]);
+        // Tanpa ini wajah lama tetap dikenali dari RAM sampai server restart.
+        invalidateEmbeddingsFor(nrp);
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[faces/reset] fail:', e);
+        res.status(500).json({ ok: false, error: 'reset-failed' });
+    }
 });
 
 // GET /api/hr/karyawan?q=...&page=1&limit=20&face=&dep=
@@ -1062,6 +1112,7 @@ router.get('/sync/data', async (req, res) => {
             embeddings,
             profiles: profRows,
             config,
+            syncToken: issueSyncToken(req.session.user),
             syncedAt: new Date().toISOString()
         });
     } catch (e) {
@@ -1073,6 +1124,10 @@ router.get('/sync/data', async (req, res) => {
 // POST /api/absen/sync — batch upload pending absensi offline (server menang)
 router.post('/absen/sync', async (req, res) => {
     try {
+        if (!(await isSyncAuthorized(req))) {
+            return res.status(401).json({ ok: false, error: 'unauthorized' });
+        }
+
         const { items } = req.body;
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ error: 'No items' });
@@ -1085,6 +1140,14 @@ router.post('/absen/sync', async (req, res) => {
                 // Validasi kategori
                 if (!isValidKategori(kategori)) {
                     results.push({ clientId, ok: false, reason: 'invalid-kategori' });
+                    continue;
+                }
+                if (!nrp || typeof nrp !== 'string') {
+                    results.push({ clientId, ok: false, reason: 'no-profile' });
+                    continue;
+                }
+                if (!isValidOfflineTimestamp(tanggal, jam)) {
+                    results.push({ clientId, ok: false, reason: 'invalid-time' });
                     continue;
                 }
 

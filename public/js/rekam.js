@@ -115,25 +115,21 @@
         (async function () {
             await FaceCommon.loadModels();
             await FaceCommon.startCamera(video);
-            // Cek embedding existing untuk NRp ini
+            // Cek embedding existing untuk NRP ini.
+            // Data lama TIDAK dihapus di sini: POST /api/faces dengan forceReplace
+            // sudah mengganti data lama dalam satu transaksi saat tombol Simpan
+            // ditekan. Dulu data dihapus duluan, sehingga kalau operator batal atau
+            // keluar halaman, karyawan kehilangan data wajahnya.
+            let replaceConfirmed = false;
             const cnt = await fetch('/api/faces/count?nrp=' + encodeURIComponent(nrp)).then(r => r.json());
             if (Number(cnt.count || 0) > 0) {
-                const yes = window.confirm(`Wajah untuk NRP ${nrp} sudah terekam (${cnt.count} sampel). Rekam ulang akan MENGHAPUS data lama. Lanjut?`);
+                const yes = window.confirm(`Wajah untuk NRP ${nrp} sudah terekam (${cnt.count} sampel). Data lama akan DIGANTI setelah rekaman baru disimpan. Lanjut?`);
                 if (!yes) {
                     UI.toastTop('Rekam dibatalkan', 'error');
                     return; // stop, jangan lanjut loop
                 }
-                // Hapus semua embedding lama dulu
-                await fetch('/api/faces/reset', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nrp })
-                }).then(r => r.json());
-                UI.toastTop('Data lama dihapus. Mulai rekam ulang...', 'success');
+                replaceConfirmed = true;
             }
-            //video.addEventListener('loadedmetadata', () => FaceCommon.resizeCanvasToVideo(video, overlay));
-            //const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
-            video.addEventListener('loadedmetadata', () => FaceCommon.resizeCanvasToVideo(video, overlay));
 
             const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.5 });
             const doSync = () => FaceCommon.syncCanvasToDisplay(video, overlay);
@@ -157,11 +153,13 @@
                 btnRecStart.addEventListener('click', async () => {
                     // Cek existing embeddings
                     if (recording || saving) return;
-                    const cnt = await fetch('/api/faces/count?nrp=' + encodeURIComponent(nrp)).then(r => r.json());
-                    if (Number(cnt.count || 0) > 0) {
-                        const yes = window.confirm(`Wajah untuk NRP ${nrp} sudah terekam (${cnt.count} sampel). Rekam ulang akan MENGHAPUS data lama. Lanjut?`);
-                        if (!yes) { UI.toastTop('Rekam dibatalkan', 'error'); return; }
-                        await fetch('/api/faces/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nrp }) });
+                    if (!replaceConfirmed) {
+                        const cnt = await fetch('/api/faces/count?nrp=' + encodeURIComponent(nrp)).then(r => r.json());
+                        if (Number(cnt.count || 0) > 0) {
+                            const yes = window.confirm(`Wajah untuk NRP ${nrp} sudah terekam (${cnt.count} sampel). Data lama akan DIGANTI setelah rekaman baru disimpan. Lanjut?`);
+                            if (!yes) { UI.toastTop('Rekam dibatalkan', 'error'); return; }
+                            replaceConfirmed = true;
+                        }
                     }
                     // Set UI
                     saved = 0; samples.length = 0;
@@ -172,6 +170,7 @@
                     if (recStatus) recStatus.classList.remove('hidden');
                     if (recActions) recActions.classList.remove('hidden');
                     recording = true;
+                    ensureLoop();
                 });
             }
             if (btnRedo) {
@@ -184,6 +183,7 @@
                     btnSave.classList.remove('loading');
                     btnRecStart.disabled = true;
                     recording = true;
+                    ensureLoop();
                 });
             }
             if (btnSave) {
@@ -208,6 +208,7 @@
                     if (resp.ok) {
                         UI.toastTop(`Rekam selesai (${resp.saved})`, 'success');
                         btnRecStart.disabled = false;   // boleh rekam lagi
+                        replaceConfirmed = false;       // rekam berikutnya mengganti data yang baru disimpan → konfirmasi lagi
                     } else if (resp.reason === 'exists') {
                         UI.toastTop('Dataset sudah ada. Ulangi proses reset & rekam.', 'error');
                     } else {
@@ -453,10 +454,20 @@
                     // - aktifkan tombol "Simpan ke Database"
                     recording = false;
                     btnSave.disabled = false;
+                    looping = false;
                     // Tidak auto-kirim ke /api/faces di sini, biarkan user menekan tombol Simpan
                 }
             }
-            loop();
+
+            // Loop berhenti sendiri setelah 15 sampel. Tombol Mulai/Ulangi wajib
+            // menjalankannya lagi, kalau tidak rekam ulang tidak mengambil sampel apa pun.
+            let looping = false;
+            function ensureLoop() {
+                if (looping) return;
+                looping = true;
+                loop();
+            }
+            ensureLoop();
         })();
     }
 })();

@@ -85,6 +85,9 @@ const SyncManager = (function () {
             }
 
             // 4) Update meta
+            // Token untuk POST /api/absen/sync saat device tidak punya sesi server
+            // (mis. dibuka dari cache saat offline lalu jaringan kembali).
+            if (data.syncToken) await OfflineDB.setMeta('syncToken', data.syncToken);
             await OfflineDB.setMeta('lastSyncAt', data.syncedAt);
             await OfflineDB.setMeta('embCount', (data.embeddings || []).length);
             await OfflineDB.setMeta('profileCount', (data.profiles || []).length);
@@ -110,7 +113,7 @@ const SyncManager = (function () {
     const MAX_UPLOAD_ATTEMPTS = 3;
 
     // Alasan yang tidak akan pernah berubah kalau dicoba ulang → langsung tandai gagal.
-    const PERMANENT_FAIL_REASONS = new Set(['no-profile', 'inactive', 'invalid-kategori']);
+    const PERMANENT_FAIL_REASONS = new Set(['no-profile', 'inactive', 'invalid-kategori', 'invalid-time']);
 
     /**
      * Upload pending absensi ke server, per-batch.
@@ -127,6 +130,10 @@ const SyncManager = (function () {
 
         try {
             await OfflineDB.purgeFailedPending(7).catch(() => { });
+
+            const headers = { 'Content-Type': 'application/json' };
+            const syncToken = await OfflineDB.getMeta('syncToken').catch(() => null);
+            if (syncToken) headers['Authorization'] = 'Bearer ' + syncToken;
 
             // Guard: tiap iterasi wajib membuat progres (hapus baris, tandai failed,
             // atau naikkan attempts sampai batas). Batas iterasi hanya jaring pengaman.
@@ -145,10 +152,17 @@ const SyncManager = (function () {
 
                 const resp = await fetch('/api/absen/sync', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     credentials: 'same-origin',
                     body: JSON.stringify({ items })
                 });
+
+                // Tidak ada sesi & token kosong/kedaluwarsa: antrian dibiarkan utuh,
+                // akan terkirim setelah operator login online lagi.
+                if (resp.status === 401) {
+                    setStatus('idle');
+                    return { ok: false, reason: 'unauthorized', synced: syncedCount };
+                }
 
                 // 413 = payload terlalu besar. Kecilkan batch dan coba lagi; kalau
                 // satu item saja masih kebesaran, item itu tidak akan pernah bisa

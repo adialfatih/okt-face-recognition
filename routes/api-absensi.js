@@ -101,7 +101,15 @@ function pairKeluarTanggalForInput(tanggalMasuk, jamMasuk, jamKeluar, kategoriMa
 const SECURITY_PAIR_MIN_MINUTES = 390; // 6 jam 30 menit, toleransi untuk shift 7 jam.
 const SECURITY_PAIR_MAX_HOURS = 18;
 
+// Kolom DATE dari `SELECT *` dikembalikan mysql2 sebagai objek Date. Kalau Date itu
+// langsung masuk CONCAT(?, ' ', jam), mysql2 menulisnya 'YYYY-MM-DD 00:00:00.000'
+// sehingga STR_TO_DATE membaca jam 00:00 dan `jam` absensi terabaikan.
+function toYmd(tanggal) {
+    return dayjs(tanggal).format('YYYY-MM-DD');
+}
+
 async function findSecurityKeluar(rowMasuk) {
+    const tanggal = toYmd(rowMasuk.tanggal);
     const rows = await q(
         `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at
          FROM table_absensi
@@ -117,15 +125,16 @@ async function findSecurityKeluar(rowMasuk) {
          LIMIT 1`,
         [
             rowMasuk.nrp,
-            rowMasuk.tanggal, rowMasuk.jam,
-            rowMasuk.tanggal, rowMasuk.jam, SECURITY_PAIR_MIN_MINUTES,
-            rowMasuk.tanggal, rowMasuk.jam, SECURITY_PAIR_MAX_HOURS
+            tanggal, rowMasuk.jam,
+            tanggal, rowMasuk.jam, SECURITY_PAIR_MIN_MINUTES,
+            tanggal, rowMasuk.jam, SECURITY_PAIR_MAX_HOURS
         ]
     );
     return rows[0] || null;
 }
 
 async function findSecurityMasuk(rowKeluar) {
+    const tanggal = toYmd(rowKeluar.tanggal);
     const rows = await q(
         `SELECT id, jam, kategori, snapshot_base64, snapshot_url, created_at
          FROM table_absensi
@@ -141,9 +150,9 @@ async function findSecurityMasuk(rowKeluar) {
          LIMIT 1`,
         [
             rowKeluar.nrp,
-            rowKeluar.tanggal, rowKeluar.jam,
-            rowKeluar.tanggal, rowKeluar.jam, SECURITY_PAIR_MIN_MINUTES,
-            rowKeluar.tanggal, rowKeluar.jam, SECURITY_PAIR_MAX_HOURS
+            tanggal, rowKeluar.jam,
+            tanggal, rowKeluar.jam, SECURITY_PAIR_MIN_MINUTES,
+            tanggal, rowKeluar.jam, SECURITY_PAIR_MAX_HOURS
         ]
     );
     return rows[0] || null;

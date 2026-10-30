@@ -58,14 +58,30 @@
       </div>`;
     }
 
-    async function handleLoginSubmit(event) {
-        const online = await canReachServer();
-        if (online) return;
+    // preventDefault() WAJIB dipanggil sinkron di awal handler. Setelah `await`
+    // pertama event submit sudah selesai di-dispatch, preventDefault tidak lagi
+    // berpengaruh dan form tetap ter-POST — saat offline itu berakhir di halaman
+    // error jaringan karena service worker tidak menangani POST.
+    // Jika server ternyata terjangkau, form dikirim manual lewat submit() native
+    // (tidak memicu event submit lagi, jadi tidak berulang).
+    function submitNative(form) {
+        HTMLFormElement.prototype.submit.call(form);
+    }
 
+    async function handleLoginSubmit(event) {
+        const form = event.currentTarget;
         event.preventDefault();
+        if (form.dataset.offlineBusy === '1') return;
+        form.dataset.offlineBusy = '1';
+
+        const online = await canReachServer();
+        if (online) {
+            submitNative(form);
+            return;
+        }
+        form.dataset.offlineBusy = '';
 
         try {
-            const form = event.currentTarget;
             const username = (form.elements.username?.value || '').trim();
             const session = await getCachedSession();
             const ready = await getOfflineReady();
@@ -89,10 +105,17 @@
     }
 
     async function handleLogoutSubmit(event) {
-        const online = await canReachServer();
-        if (online) return;
-
+        const form = event.currentTarget;
         event.preventDefault();
+        if (form.dataset.offlineBusy === '1') return;
+        form.dataset.offlineBusy = '1';
+
+        const online = await canReachServer();
+        if (online) {
+            submitNative(form);
+            return;
+        }
+        form.dataset.offlineBusy = '';
 
         try {
             if (hasOfflineDB()) {
@@ -134,6 +157,12 @@
 
         document.querySelectorAll('form[data-offline-logout="true"]').forEach(form => {
             form.addEventListener('submit', handleLogoutSubmit);
+        });
+
+        // Halaman yang dipulihkan dari back/forward cache masih membawa flag busy.
+        window.addEventListener('pageshow', () => {
+            document.querySelectorAll('form[data-offline-login="true"], form[data-offline-logout="true"]')
+                .forEach(form => { form.dataset.offlineBusy = ''; });
         });
 
         syncOfflineLogout();

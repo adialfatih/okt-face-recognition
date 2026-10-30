@@ -11,6 +11,9 @@
     let _threshold = 0.45;
     let _marginMin = 0.05;
     let _offlineReady = false;
+    // Jaringan hidup tetapi server menolak karena tidak ada sesi (dibuka dari cache
+    // saat offline, atau sesi kedaluwarsa). Absensi dialihkan ke jalur offline.
+    let _sessionExpired = false;
 
     // Init IndexedDB + SyncManager
     try {
@@ -41,7 +44,14 @@
 
         // Auto-sync saat online
         if (_isOnline) {
-            SyncManager.fullSync().catch(e => console.warn('[sync] initial fail:', e));
+            SyncManager.fullSync()
+                .then(r => {
+                    if (r?.download?.reason === 'unauthorized') {
+                        _sessionExpired = true;
+                        updateOfflineIndicator();
+                    }
+                })
+                .catch(e => console.warn('[sync] initial fail:', e));
         }
         _offlineReady = true;
     } catch (e) {
@@ -57,7 +67,12 @@
             ind.className = 'fixed top-2 left-2 z-50';
             infoCard.parentElement.appendChild(ind);
         }
-        if (_isOnline) {
+        if (_isOnline && _sessionExpired) {
+            ind.innerHTML = `
+        <div class="badge badge-warning gap-1 text-xs">
+          <i class="fa-solid fa-user-clock"></i> Sesi habis — absensi disimpan di device, login ulang untuk sinkron
+        </div>`;
+        } else if (_isOnline) {
             ind.innerHTML = '';
         } else {
             ind.innerHTML = `
@@ -388,15 +403,15 @@
                             // ==== OFFLINE-FIRST STRATEGY ====
                             // Jika offline → coba offline match
                             // Jika online → coba server, fallback ke offline jika network error
-                            if (!_isOnline) {
-                                // OFFLINE MODE
+                            if (!_isOnline || _sessionExpired) {
+                                // OFFLINE MODE (termasuk online tanpa sesi server)
                                 resp = await tryOfflineMatch(sampleBuffer, frame);
                                 // Trigger upload attempt (will fail silently if still offline)
                                 if (typeof SyncManager !== 'undefined') SyncManager.uploadPending().catch(() => { });
                             } else {
                                 // ONLINE MODE — coba server
                                 try {
-                                    resp = await fetch('/api/absen', {
+                                    const httpResp = await fetch('/api/absen', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
@@ -404,7 +419,18 @@
                                             descriptors: sampleBuffer,
                                             frameBase64: frame
                                         })
-                                    }).then(r => r.json());
+                                    });
+                                    if (httpResp.status === 401) {
+                                        // Dulu 401 ditampilkan sebagai "wajah tidak terdeteksi"
+                                        // untuk semua orang. Alihkan ke jalur offline.
+                                        console.warn('[absensi] sesi server tidak ada, fallback offline');
+                                        _sessionExpired = true;
+                                        updateOfflineIndicator();
+                                        resp = await tryOfflineMatch(sampleBuffer, frame);
+                                        if (typeof SyncManager !== 'undefined') SyncManager.uploadPending().catch(() => { });
+                                    } else {
+                                        resp = await httpResp.json();
+                                    }
                                 } catch (e) {
                                     // Network error → fallback ke offline
                                     console.warn('[absensi] network error, fallback offline:', e);
@@ -445,6 +471,12 @@
                                     sndErr.currentTime = 0;
                                     sndErr.play();
                                 } catch (e) { }
+                            } else if (resp?.reason === 'offline-not-ready' || resp?.reason === 'no-embeddings') {
+                                renderInfo(`
+              <div class="bg-error/80 text-error-content backdrop-blur-sm rounded-box p-2 sm:p-3 text-xs sm:text-sm shadow">
+                ⛔ Data offline belum siap. Login online lalu buka halaman absensi untuk download data.
+              </div>`);
+                                cooldown = true; setTimeout(() => { cooldown = false; renderInfo(''); }, 4000);
                             } else {
                                 renderInfo(`
               <div class="bg-error/80 text-error-content backdrop-blur-sm rounded-box p-2 sm:p-3 text-xs sm:text-sm shadow">
