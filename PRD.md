@@ -33,7 +33,7 @@ Sejak 2026-07 aplikasi juga berupa **PWA offline-first**: stasiun absensi tetap 
 | Absensi wajah offline (PWA) | ✅ jalan | sama |
 | **Absensi v2 — multi-wajah (maks 5/frame)** | 🧪 uji coba, menu terpisah; v1 tetap jalur produksi | `/absensi-v2` → `/absensi-v2/capture?k=` |
 | Rekam wajah (15 sampel) | ✅ jalan (menu disembunyikan dari drawer, masih dari dashboard & bottom-nav) | `/rekam` → `/rekam/capture?nrp=` |
-| Test wajah | ✅ jalan | `/test`, `/test/capture` |
+| Test wajah (multi-wajah, merah/hijau, tidak mencatat absensi) | ✅ jalan | `/test`, `/test/capture` |
 | Data karyawan (filter wajah/dep, paginasi) | ✅ jalan | `/karyawan` |
 | Laporan absensi (DataTables, detail foto, edit/hapus paket) | ✅ jalan | `/laporan` |
 | Debug jarak wajah | ✅ tool dev | `/debug/match` |
@@ -186,7 +186,7 @@ okt-face-recognition/
 │  │  ├─ offline-session.js  # Login/logout offline (dimuat di semua halaman via head.ejs)
 │  │  ├─ login-offline-status.js  # Indikator online/offline + kesiapan data di halaman login
 │  │  ├─ rekam.js            # Autocomplete NRP (rekam-start) + rekam 15 sample + verifikasi anti-salah-orang
-│  │  ├─ test.js             # Test wajah live → /api/match
+│  │  ├─ test.js             # Test wajah multi-wajah (maks 5, tracking IoU) → /api/match per wajah; bunyi sekali per orang
 │  │  ├─ debug-match.js      # Debug jarak wajah (threshold/margin/statistik sesi)
 │  │  ├─ karyawan.js         # Kartu data karyawan + filter (face/dep) + paginasi
 │  │  ├─ laporan-absensi.js  # Laporan: DataTables, filter, detail foto, edit/hapus (minta password otorisasi)
@@ -217,7 +217,9 @@ okt-face-recognition/
 
 **Absensi v2 (uji coba, `absensi-v2.js`):** tiap tick (220ms) `detectAllFaces` (TinyFaceDetector inputSize 416) → maks 5 wajah terbesar → dipasangkan ke *track* lewat IoU ≥0.3 (track hilang >1.2s dibuang). Descriptor hanya dihitung bila ada wajah baru/belum terkonfirmasi (+ tiap 5 tick untuk verifikasi ulang). Per track: quality gate (skor ≥0.6, tinggi wajah 10–90% frame) → 2–3 descriptor → `OfflineMatch.findBestMatch` lokal (tak dikenal/ambiguous = tetap merah, **tidak** dikirim) → cek cooldown NRP 2 menit → `POST /api/absen` (`source:'web-v2'`, snapshot = crop wajah 480px) → hasil: ok/duplicate = kotak hijau + nama; unknown/ambiguous dari server = merah, coba lagi 3s; inactive = merah 2 menit. Offline/401 → antrian IndexedDB dengan `source:'offline-sync-v2'`. Hanya efek suara ping/error, tanpa ucapan nama (TTS). Riwayat sesi tampil di bawah kamera.
 
-**Rekam wajah:** `rekam-start.ejs` (autocomplete `/api/karyawan/search`) → `rekam-capture.ejs?nrp=` → `rekam.js`: cek `/api/faces/count` → konfirmasi penggantian (data lama **tidak** dihapus di client) → kumpulkan 15 sampel (jeda ≥600ms, frame 960px q0.82) dengan verifikasi sampel pertama via `/api/match` (tolak bila wajah milik NRP lain) → tombol Simpan → `POST /api/faces` (`forceReplace:true`).
+**Test wajah (`test.js`):** sama seperti v2 (maks 5 wajah, tracking IoU, 2–3 sampel per wajah, inputSize 416) tetapi pencocokan selalu lewat server `POST /api/match` per wajah; tidak mencatat absensi. Wajah tak dikenal dicek ulang tiap 1.5s, wajah dikenal diverifikasi ulang tiap 4s. Label: nama + NRP + jarak, atau "Tidak dikenal"/"Ambigu" + jarak terdekat. Kartu info pojok kiri bawah menampilkan detail orang yang terakhir dikenali. **Bunyi sekali per orang**: ping saat pertama dikenali (kunci NRP), error sekali per wajah tak dikenal; berbunyi lagi hanya jika orang itu hilang dari kamera > 5 detik. Loop dibungkus try/catch & throttle 220ms (dulu tanpa throttle, bunyi tiap frame, dan berhenti total saat error).
+
+**Rekam wajah:** `rekam-start.ejs` (autocomplete `/api/karyawan/search`) → `rekam-capture.ejs?nrp=` → `rekam.js`: cek `/api/faces/count` → konfirmasi penggantian (data lama **tidak** dihapus di client) → loop deteksi (150ms, inputSize 320) dengan kotak hijau/merah + alasan → **5 langkah pose × 3 sampel** (lurus, kiri, kanan, dagu naik/menunduk, mundur ±1 langkah) dengan jeda 1.5s antar pose & ≥500ms antar sampel → sampel pertama diverifikasi `/api/match` (tolak jika wajah milik NRP lain) → tiap sampel dicek konsistensi (jarak ke rata-rata sampel sebelumnya ≤ 0.55) → frame 960px q0.82 → tombol Simpan → `POST /api/faces` (`forceReplace:true`). Tinggi wajah relatif dihitung terhadap **tinggi frame video** (bukan tinggi tampilan). Peringatan `beforeunload` bila ada sampel belum disimpan.
 
 **Laporan:** `laporan-absensi.ejs` → `laporan-absensi.js` → `GET /api/absensi/report` → DataTables; detail `GET /api/absensi/:id`; edit `PUT /api/absensi/pair/:id`; hapus `DELETE /api/absensi/pair/:id` (keduanya kirim `authorizationPassword`).
 
@@ -334,7 +336,7 @@ Validasi wajib `isValidKategori()`. `shift_code` diturunkan via `deriveShiftCode
 - TinyFaceDetector `inputSize 256, scoreThreshold 0.5`.
 - Skor deteksi ≥ 0.6; tinggi wajah relatif 20%–85% tinggi frame; tepat 1 wajah.
 - Absensi: kumpulkan 2–3 descriptor dalam window 1.2 detik, loop throttle 220ms, cooldown 4 detik setelah hasil.
-- Rekam: 15 sampel, jeda ≥600ms (+450ms tunggu), verifikasi sampel pertama via `/api/match`. Sejak 2026-10-30 tanpa tutup putih/lingkaran — hanya kotak hijau.
+- Rekam: 15 sampel dari 5 pose, verifikasi sampel pertama + cek konsistensi tiap sampel, tinggi wajah 18–80% frame video (pose terakhir 10–35%), tanpa tutup putih (§4.1).
 - Absensi v2 (uji coba): inputSize 416, maks 5 wajah, tinggi wajah 10–90% frame, 2–3 sampel per wajah, cooldown 2 menit per NRP (§4.1).
 
 ### 6.5 Tanggal absensi & pairing Masuk/Keluar
@@ -370,7 +372,7 @@ Ada **dua jalur sync yang tumpang tindih** (kandidat konsolidasi):
 
 ## 8. Mode Offline / PWA (detail)
 
-### 8.1 Service Worker (`public/sw.js`, `CACHE_VERSION = 'v6'`)
+### 8.1 Service Worker (`public/sw.js`, `CACHE_VERSION = 'v8'`)
 - Didaftarkan di `partials/head.ejs` (scope `/`); disajikan via route `/sw.js` dengan `Cache-Control: no-cache`.
 - **Install:** precache aset lokal wajib (`PRECACHE_URLS`: styles, ui/offline-*/sync/face-common/absensi.js, suara, 3 model face-api) — gagal satu = install gagal; CDN (`CDN_PRECACHE_URLS`) best-effort dengan mode CORS. `skipWaiting()` + `clients.claim()`.
 - **Strategi fetch (hanya GET):**
@@ -493,6 +495,7 @@ HR_* fallback ke DB_* bila tidak diset. Path sertifikat HTTPS di-hardcode di `ap
 | B-04 Pairing Security PUT/DELETE pakai jam 00:00 | `api-absensi.js`: `toYmd()` di `findSecurityKeluar/Masuk` | 2026-10-30 |
 | B-05 Rekam ulang setelah 15 sampel tidak merekam | `rekam.js`: `ensureLoop()` dipanggil tombol Mulai/Ulangi | 2026-10-30 |
 | B-06 Rekam menghapus data lama sebelum simpan | `rekam.js`: tidak lagi memanggil `/api/faces/reset`; penggantian data lewat `POST /api/faces` `forceReplace` (transaksional); konfirmasi sekali (`replaceConfirmed`) | 2026-10-30 |
+| B-15 `resizeCanvasToVideo` tidak ada (rekam & test) | Dihapus dari `rekam.js`; `test.js` ditulis ulang | 2026-10-30 / 2026-10-31 |
 | B-07 `EMB_CACHE` basi setelah reset | `/api/faces/reset` memanggil `invalidateEmbeddingsFor` + try/catch | 2026-10-30 |
 
 ### 11.2 🔴 Kritis
@@ -517,7 +520,8 @@ Catatan sisa dari B-01/B-02:
 ### 11.4 🟡 Minor / kebersihan
 - **B-13** Grace telat tidak konsisten: `is_late` grace 5 menit, `menit_terlambat` grace 3 menit (06:04 → `is_late=0`, `menit_terlambat=4`). Server & client sama-sama begitu.
 - **B-14** Masuk Shift Malam setelah tengah malam (mis. 00:30) disimpan dengan tanggal hari berikutnya; Keluar paginya lalu digeser ke H+1 lagi → pasangan/durasi laporan salah (~29 jam).
-- **B-15** `FaceCommon.resizeCanvasToVideo` tidak ada tetapi masih dipanggil di `test.js` (setelah ganti kamera) → TypeError tak berbahaya. Ganti dengan `syncCanvasToDisplay`. (Pemanggilan di `rekam.js` sudah dihapus 2026-10-30.)
+- **B-27** `absensi.js` (v1) menghitung tinggi wajah relatif terhadap tinggi **tampilan** canvas, padahal kotak deteksi dalam ukuran **frame video** → di HP wajah terbaca 2–3× lebih besar, sering ditolak "terlalu dekat". Sudah benar di v2, test, dan rekam. Tidak diperbaiki karena v1 akan diganti v2.
+- **B-26** Tracking IoU + gambar kotak berlabel diduplikasi di `absensi-v2.js`, `test.js` (dan gambar kotak di `rekam.js`). Jika v2 dipakai permanen, ekstrak ke modul bersama (mis. `public/js/face-tracker.js`).
 - **B-16** `absensi.js` hanya membedakan `ok` & `duplicate`; `ambiguous`, `inactive`, `no-profile`, 401, 500 semua tampil "Wajah tidak terdeteksi dalam database".
 - **B-17** Anti-dobel offline hanya terhadap antrian lokal; setelah antrian terkirim/terhapus, absen ulang offline di hari yang sama tampil "berhasil" lalu ditolak server diam-diam sebagai `duplicate`.
 - **B-18** Endpoint `/faces/count`, `/hr/karyawan/:nrp` tanpa try/catch → error DB membuat request menggantung (Express 4).
@@ -578,3 +582,5 @@ Tidak ada test otomatis maupun linter di project ini — verifikasi manual via b
 | 2026-10-30 | Analisa ulang penuh s/d commit `79cad5e`: tambah mode offline/PWA (§8), IndexedDB, endpoint sync, session MySQL, bcrypt, `PASSWORD_OTORISASI`, pairing shift malam & Security, status fitur; tandai bug lama yang sudah diperbaiki; tambah bug baru B-01…B-25 dengan ID baru; panduan agent diperbarui. Tambah `CLAUDE.md`. |
 | 2026-10-30 | Perbaikan B-01…B-07: login/logout offline, proteksi `/api/absen/sync` (syncToken JWT + validasi waktu), fallback 401 di absensi, pairing Security PUT/DELETE, loop rekam ulang, rekam tidak lagi menghapus data sebelum simpan, invalidasi EMB_CACHE saat reset. `CACHE_VERSION` → v5. |
 | 2026-10-30 | Tambah **Absensi v2 (uji coba)**: multi-wajah maks 5, kotak merah/hijau + nama, cooldown 2 menit, menu terpisah `/absensi-v2`; `source` web-v2/offline-sync-v2; tutup putih di halaman rekam dihapus; `CACHE_VERSION` → v6. |
+| 2026-10-31 | Test wajah ditulis ulang: multi-wajah merah/hijau + label nama/jarak, bunyi sekali per orang, throttle + try/catch, 401 ditangani, fix tombol ganti kamera (B-15). `CACHE_VERSION` → v7. |
+| 2026-10-31 | Rekam wajah ditulis ulang (bagian kamera): kotak hijau/merah + alasan, 5 langkah pose × 3 sampel, cek konsistensi sampel, fix ukuran wajah (B-27 untuk rekam), tanpa jeda yang membekukan kamera, tombol Ulangi tampil, teks diperbaiki, peringatan sebelum keluar. `CACHE_VERSION` → v8. |

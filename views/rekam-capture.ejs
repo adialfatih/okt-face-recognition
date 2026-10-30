@@ -14,7 +14,7 @@
                 </span>
             </p>
             <p class="text-center text-[11px] mt-1 opacity-80">
-                Pastikan wajah tunggal, jelas, dan berada di tengah frame selama proses perekaman (15 sampel).
+                Hanya 1 wajah di depan kamera. Ikuti instruksi pose di bawah kamera (5 langkah × 3 sampel).
             </p>
         </div>
 
@@ -41,7 +41,13 @@
                         <video id="video" autoplay playsinline
                             class="w-full h-auto rounded-2xl object-cover bg-black/80">
                         </video>
-                        <canvas id="overlay" class="absolute inset-0"></canvas>
+                        <canvas id="overlay" class="absolute inset-0 pointer-events-none"></canvas>
+                    </div>
+
+                    <!-- Instruksi pose (diisi rekam.js) -->
+                    <div id="poseHint"
+                        class="rounded-xl bg-sky-50 border border-sky-100 text-sky-800 text-sm text-center px-3 py-2">
+                        Menyiapkan kamera…
                     </div>
 
                     <!-- <p class="text-[11px] text-slate-500">
@@ -82,8 +88,7 @@
                                 <span>Mulai Rekam</span>
                             </button>
 
-                            <button id="btnRedo" class="btn btn-warning btn-sm flex items-center gap-1 hidden"
-                                style="display:none;">
+                            <button id="btnRedo" class="btn btn-warning btn-sm flex items-center gap-1 hidden">
                                 <i class="fa-solid fa-rotate-left"></i>
                                 <span>Ulangi</span>
                             </button>
@@ -98,18 +103,15 @@
                         <div id="recStatus" class="text-center text-xs text-slate-500 hidden">
                             Menyimpan data face recognition, mohon tunggu…
                         </div>
-
-                        <div id="recActions" class="flex items-center justify-center gap-2 hidden">
-                            <!-- ini akan di-manage oleh JS sesuai state -->
-                        </div>
                     </div>
                 </div>
 
                 <!-- INFO NOTE -->
                 <div class="text-xs text-slate-500">
                     <p>
-                        Sistem akan mengambil hingga <span class="font-semibold text-sky-700">15 sampel</span> wajah.
-                        Rekam ulang akan menghapus data lama untuk NRP ini.
+                        Sistem mengambil <span class="font-semibold text-sky-700">15 sampel</span> wajah dari 5 pose.
+                        Jika NRP ini sudah punya data wajah, data lama baru diganti saat tombol
+                        <b>Simpan ke Database</b> ditekan — membatalkan rekaman tidak menghapus data lama.
                     </p>
                 </div>
             </div>

@@ -6,7 +6,7 @@
  *  - Network-first untuk halaman dan API GET
  *  - POST absensi offline tetap ditangani client-side oleh IndexedDB
  */
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v8';
 const STATIC_CACHE = `okt-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `okt-runtime-${CACHE_VERSION}`;
 
